@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.tasks.billing_tasks.sync_stripe_subscriptions")
-async def sync_stripe_subscriptions() -> dict:
+def sync_stripe_subscriptions() -> dict:
     """
     Sync local subscription state with Stripe.
     Runs daily via Celery beat.
@@ -27,37 +27,42 @@ async def sync_stripe_subscriptions() -> dict:
     Returns:
         Dict with sync statistics
     """
-    if not settings.STRIPE_SECRET_KEY or settings.STRIPE_SECRET_KEY.startswith("sk_test_your"):
-        logger.warning("Stripe not configured, skipping subscription sync")
-        return {"synced": 0, "skipped": True, "reason": "Stripe not configured"}
+    import asyncio
 
-    import stripe
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    async def _sync():
+        if not settings.STRIPE_SECRET_KEY or settings.STRIPE_SECRET_KEY.startswith("sk_test_your"):
+            logger.warning("Stripe not configured, skipping subscription sync")
+            return {"synced": 0, "skipped": True, "reason": "Stripe not configured"}
 
-    async with async_session_maker() as session:
-        # Get all users with Stripe customer IDs
-        result = await session.execute(
-            select(User).where(User.stripe_customer_id.is_not(None))
-        )
-        users = result.scalars().all()
+        import stripe
+        stripe.api_key = settings.STRIPE_SECRET_KEY
 
-        synced = 0
-        errors = []
+        async with async_session_maker() as session:
+            # Get all users with Stripe customer IDs
+            result = await session.execute(
+                select(User).where(User.stripe_customer_id.is_not(None))
+            )
+            users = result.scalars().all()
 
-        for user in users:
-            try:
-                await _sync_user_subscription(session, user, stripe)
-                synced += 1
-            except Exception as e:
-                logger.error(f"Error syncing subscription for user {user.id}: {e}")
-                errors.append({"user_id": str(user.id), "error": str(e)})
+            synced = 0
+            errors = []
 
-        await session.commit()
+            for user in users:
+                try:
+                    await _sync_user_subscription(session, user, stripe)
+                    synced += 1
+                except Exception as e:
+                    logger.error(f"Error syncing subscription for user {user.id}: {e}")
+                    errors.append({"user_id": str(user.id), "error": str(e)})
 
-        return {
-            "users_synced": synced,
-            "errors": errors,
-        }
+            await session.commit()
+
+            return {
+                "users_synced": synced,
+                "errors": errors,
+            }
+
+    return asyncio.run(_sync())
 
 
 async def _sync_user_subscription(session, user: User, stripe) -> None:
@@ -155,7 +160,7 @@ def _get_plan_from_price_id(price_id: Optional[str]) -> UserPlan:
 
 
 @celery_app.task(name="app.tasks.billing_tasks.handle_stripe_webhook_event")
-async def handle_stripe_webhook_event(event_type: str, event_data: dict) -> dict:
+def handle_stripe_webhook_event(event_type: str, event_data: dict) -> dict:
     """
     Handle a Stripe webhook event asynchronously.
     Called from the webhook endpoint to offload processing.
@@ -167,22 +172,179 @@ async def handle_stripe_webhook_event(event_type: str, event_data: dict) -> dict
     Returns:
         Processing result
     """
-    logger.info(f"Processing Stripe webhook: {event_type}")
+    import asyncio
 
-    try:
-        if event_type == "checkout.session.completed":
-            return await _handle_checkout_completed(event_data)
-        elif event_type == "customer.subscription.updated":
-            return await _handle_subscription_updated(event_data)
-        elif event_type == "customer.subscription.deleted":
-            return await _handle_subscription_deleted(event_data)
-        elif event_type == "invoice.payment_failed":
-            return await _handle_payment_failed(event_data)
-        else:
-            return {"status": "ignored", "event_type": event_type}
-    except Exception as e:
-        logger.error(f"Error handling webhook {event_type}: {e}")
-        return {"status": "error", "event_type": event_type, "error": str(e)}
+    async def _handle():
+        logger.info(f"Processing Stripe webhook: {event_type}")
+
+        try:
+            if event_type == "checkout.session.completed":
+                return await _handle_checkout_completed(event_data)
+            elif event_type == "customer.subscription.updated":
+                return await _handle_subscription_updated(event_data)
+            elif event_type == "customer.subscription.deleted":
+                return await _handle_subscription_deleted(event_data)
+            elif event_type == "invoice.payment_failed":
+                return await _handle_payment_failed(event_data)
+            else:
+                return {"status": "ignored", "event_type": event_type}
+        except Exception as e:
+            logger.error(f"Error handling webhook {event_type}: {e}")
+            return {"status": "error", "event_type": event_type, "error": str(e)}
+
+    return asyncio.run(_handle())
+
+
+@celery_app.task(name="app.tasks.billing_tasks._handle_checkout_completed")
+def _handle_checkout_completed(event_data: dict) -> dict:
+    """Handle checkout.session.completed event."""
+    import asyncio
+    return asyncio.run(_handle_checkout_completed_impl(event_data))
+
+
+@celery_app.task(name="app.tasks.billing_tasks._handle_subscription_updated")
+def _handle_subscription_updated(event_data: dict) -> dict:
+    import asyncio
+    return asyncio.run(_handle_subscription_updated_impl(event_data))
+
+
+@celery_app.task(name="app.tasks.billing_tasks._handle_subscription_deleted")
+def _handle_subscription_deleted(event_data: dict) -> dict:
+    import asyncio
+    return asyncio.run(_handle_subscription_deleted_impl(event_data))
+
+
+@celery_app.task(name="app.tasks.billing_tasks._handle_payment_failed")
+def _handle_payment_failed(event_data: dict) -> dict:
+    import asyncio
+    return asyncio.run(_handle_payment_failed_impl(event_data))
+
+
+async def _handle_checkout_completed_impl(event_data: dict) -> dict:
+    """Handle checkout.session.completed event."""
+    session_data = event_data["data"]["object"]
+    customer_id = session_data.get("customer")
+    subscription_id = session_data.get("subscription")
+
+    if not customer_id or not subscription_id:
+        return {"status": "error", "reason": "Missing customer or subscription ID"}
+
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    # Fetch full subscription details
+    stripe_sub = stripe.Subscription.retrieve(subscription_id)
+
+    async with async_session_maker() as session:
+        # Find user by Stripe customer ID
+        from sqlalchemy import select
+        from app.models.models import User
+        result = await session.execute(
+            select(User).where(User.stripe_customer_id == customer_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return {"status": "error", "reason": "User not found for customer"}
+
+        # Sync the subscription
+        await _sync_user_subscription(session, user, stripe)
+        await session.commit()
+
+    return {"status": "success", "customer_id": customer_id}
+
+
+async def _handle_subscription_updated_impl(event_data: dict) -> dict:
+    """Handle customer.subscription.updated event."""
+    stripe_sub_data = event_data["data"]["object"]
+    customer_id = stripe_sub_data.get("customer")
+
+    if not customer_id:
+        return {"status": "error", "reason": "Missing customer ID"}
+
+    async with async_session_maker() as session:
+        from sqlalchemy import select
+        from app.models.models import User
+        result = await session.execute(
+            select(User).where(User.stripe_customer_id == customer_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return {"status": "error", "reason": "User not found"}
+
+        import stripe
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        await _sync_user_subscription(session, user, stripe)
+        await session.commit()
+
+    return {"status": "success", "customer_id": customer_id}
+
+
+async def _handle_subscription_deleted_impl(event_data: dict) -> dict:
+    """Handle customer.subscription.deleted event."""
+    stripe_sub_data = event_data["data"]["object"]
+    customer_id = stripe_sub_data.get("customer")
+
+    if not customer_id:
+        return {"status": "error", "reason": "Missing customer ID"}
+
+    async with async_session_maker() as session:
+        from sqlalchemy import select
+        from app.models.models import User, Subscription, SubscriptionStatus, UserPlan
+        result = await session.execute(
+            select(User).where(User.stripe_customer_id == customer_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return {"status": "error", "reason": "User not found"}
+
+        # Mark local subscription as canceled
+        sub_result = await session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        )
+        local_sub = sub_result.scalar_one_or_none()
+
+        if local_sub:
+            local_sub.status = SubscriptionStatus.CANCELED
+            local_sub.canceled_at = datetime.now(timezone.utc)
+            local_sub.plan = UserPlan.FREE
+            user.plan = UserPlan.FREE
+            await session.commit()
+
+    return {"status": "success", "customer_id": customer_id}
+
+
+async def _handle_payment_failed_impl(event_data: dict) -> dict:
+    """Handle invoice.payment_failed event."""
+    invoice_data = event_data["data"]["object"]
+    customer_id = invoice_data.get("customer")
+
+    if not customer_id:
+        return {"status": "error", "reason": "Missing customer ID"}
+
+    async with async_session_maker() as session:
+        from sqlalchemy import select
+        from app.models.models import User, Subscription, SubscriptionStatus
+        result = await session.execute(
+            select(User).where(User.stripe_customer_id == customer_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return {"status": "error", "reason": "User not found"}
+
+        sub_result = await session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        )
+        local_sub = sub_result.scalar_one_or_none()
+
+        if local_sub:
+            local_sub.status = SubscriptionStatus.PAST_DUE
+            await session.commit()
+
+    return {"status": "success", "customer_id": customer_id}
 
 
 async def _handle_checkout_completed(event_data: dict) -> dict:

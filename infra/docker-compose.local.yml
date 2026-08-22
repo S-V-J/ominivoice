@@ -1,0 +1,305 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ominivoice-postgres-local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ominivoice}
+      POSTGRES_USER: ${POSTGRES_USER:-ominivoice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data_local:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ominivoice} -d ${POSTGRES_DB:-ominivoice}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ominivoice-local
+    restart: unless-stopped
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: ominivoice-redis-local
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-localdev}
+    volumes:
+      - redis_data_local:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-localdev}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - ominivoice-local
+    restart: unless-stopped
+
+  # Backend API (FastAPI with reload)
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-dev}
+    container_name: ominivoice-api-local
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ominivoice}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-ominivoice}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-localdev-secret-key-change-in-production-min-32-chars}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_API_BASE=https://integrate.api.nvidia.com/v1
+      - TTS_ENGINE=${TTS_ENGINE:-kokoro}
+      - STT_ENGINE=${STT_ENGINE:-faster-whisper}
+      - VOICE_ENGINE_URL=http://voice-engine:8001
+      - FRONTEND_URL=https://ominivoice.local
+      - LOG_LEVEL=debug
+      - PYTHONUNBUFFERED=1
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Debugpy port
+    volumes:
+      - ../backend:/app
+      - ../voice_engine:/app/voice_engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ominivoice-local
+      - ominivoice-external
+    restart: unless-stopped
+
+  # Celery Worker for Background Jobs
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-dev}
+    container_name: ominivoice-worker-local
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=50
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ominivoice}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-ominivoice}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-localdev-secret-key-change-in-production-min-32-chars}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_API_BASE=https://integrate.api.nvidia.com/v1
+      - TTS_ENGINE=${TTS_ENGINE:-kokoro}
+      - STT_ENGINE=${STT_ENGINE:-faster-whisper}
+      - VOICE_ENGINE_URL=http://voice-engine:8001
+      - LOG_LEVEL=debug
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/2
+    volumes:
+      - ../backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ominivoice-local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r = redis.Redis(host='redis', port=6379, password='localdev', db=0); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+  # Celery Beat for Scheduled Tasks
+  scheduler:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-dev}
+    container_name: ominivoice-scheduler-local
+    command: celery -A app.core.celery_app beat --loglevel=info --scheduler celery.beat.PersistentScheduler --schedule=/app/celerybeat-data/celerybeat-schedule
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ominivoice}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-ominivoice}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-localdev-secret-key-change-in-production-min-32-chars}
+      - LOG_LEVEL=debug
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/2
+    volumes:
+      - ../backend:/app
+      - celery_beat_data_local:/app/celerybeat-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ominivoice-local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r = redis.Redis(host='redis', port=6379, password='localdev', db=0); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+  # Voice Engine
+  voice-engine:
+    build:
+      context: ../voice_engine
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-dev}
+    container_name: ominivoice-voice-engine-local
+    environment:
+      - ENVIRONMENT=development
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-localdev}@redis:6379/0
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_API_BASE=https://integrate.api.nvidia.com/v1
+      - NGC_API_KEY=${NGC_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-localdev-secret-key-change-in-production-min-32-chars}
+      - TTS_ENGINE=${TTS_ENGINE:-kokoro}
+      - STT_ENGINE=${STT_ENGINE:-faster-whisper}
+      - KOKORO_MODEL_PATH=/models/kokoro-v1.0.onnx
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+      - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8}
+      - LOG_LEVEL=debug
+      - PYTHONUNBUFFERED=1
+      # Stack B NIM endpoints (optional)
+      - RIVA_ASR_GRPC_ENDPOINT=voice-riva-asr:50051
+      - CHATTERBOX_GRPC_ENDPOINT=voice-chatterbox:50051
+      - RIVA_ASR_USE_SSL=false
+      - CHATTERBOX_USE_SSL=false
+      - RIVA_ASR_LANGUAGE=en-US
+      - CHATTERBOX_LANGUAGE=en-US
+      - CHATTERBOX_EMOTION_EXAGGERATION=0.5
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../voice_engine:/app
+      - voice_models:/models:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ominivoice-local
+      - ominivoice-external
+    restart: unless-stopped
+
+  # Frontend (Vite dev server)
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: builder
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-dev}
+        VITE_API_URL: https://ominivoice.local/api
+        VITE_WS_URL: wss://ominivoice.local/ws
+    container_name: ominivoice-frontend-local
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node debug port
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - ominivoice-external
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy with local SSL (mkcert)
+  nginx:
+    image: nginx:alpine
+    container_name: ominivoice-nginx-local
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - frontend_static_local:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+      - frontend
+      - voice-engine
+    networks:
+      - ominivoice-local
+      - ominivoice-external
+    restart: unless-stopped
+    dns:
+      - 127.0.0.11
+    dns_search: .
+
+  # Certbot for local certificates (mkcert) - DISABLED for local development
+  # Using mkcert instead of Let's Encrypt
+  # certbot:
+  #   image: certbot/certbot:latest
+  #   container_name: ominivoice-certbot-local
+  #   volumes:
+  #     - ./certbot/conf:/etc/letsencrypt
+  #     - ./certbot/www:/var/www/certbot
+  #   entrypoint: "/bin/sh -c 'echo \"Local certs via mkcert - see setup instructions\" && sleep infinity'"
+  #   networks:
+  #     - ominivoice-external
+  #   restart: "no"
+  #   ports: []
+
+volumes:
+  postgres_data_local:
+    driver: local
+  redis_data_local:
+    driver: local
+  celery_beat_data_local:
+    driver: local
+  voice_models:
+    driver: local
+  frontend_static_local:
+    driver: local
+
+networks:
+  ominivoice-local:
+    driver: bridge
+    internal: false
+  ominivoice-external:
+    driver: bridge

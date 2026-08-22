@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Copy package files first for better cache
 COPY frontend/package*.json ./
-RUN npm ci --prefer-offline --no-audit --no-fund
+RUN npm install --prefer-offline --no-audit --no-fund
 
 # Copy source and build
 COPY frontend/ ./
@@ -22,7 +22,7 @@ FROM nginx:alpine AS production
 RUN apk add --no-cache curl
 
 # Copy custom nginx config
-COPY infra/nginx/frontend.conf /etc/nginx/conf.d/default.conf
+COPY infra/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html

@@ -1,0 +1,33 @@
+# Dependency Review Configuration
+# https://github.com/actions/dependency-review-action
+
+# Fail on high severity vulnerabilities
+fail-on-severity: high
+
+# Allow specific licenses (MIT, Apache-2.0, BSD, etc.)
+allow-licenses:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - Python-2.0
+  - MPL-2.0
+  - Unlicense
+  - CC0-1.0
+
+# Deny specific licenses
+deny-licenses:
+  - GPL-3.0
+  - AGPL-3.0
+  - SSPL-1.0
+
+# Scope of dependencies to check
+scope:
+  - runtime
+  - development
+
+# Config for each ecosystem
+ecosystems:
+  - pypi
+  - npm

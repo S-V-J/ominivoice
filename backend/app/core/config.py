@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
-    # NVIDIA API (Hosted LLM Provider)
+    # NVIDIA API (Hosted LLM Provider) - Used by BOTH Stack A and Stack B
     # =========================================================================
     NVIDIA_API_KEY: str = Field(
         default="",
@@ -109,19 +109,6 @@ class Settings(BaseSettings):
     NVIDIA_DEFAULT_MODEL: str = Field(
         default="stepfun-ai/step-3.7-flash",
         description="Default model to use (can be overridden per-agent)",
-    )
-
-    # =========================================================================
-    # OLLAMA (Self-hosted LLM)
-    # =========================================================================
-    OLLAMA_BASE_URL: str = Field(
-        default="http://localhost:11434",
-        description="Ollama base URL",
-    )
-
-    OLLAMA_DEFAULT_MODEL: str = Field(
-        default="qwen3:4b",
-        description="Default Ollama model",
     )
 
     # =========================================================================
@@ -214,6 +201,78 @@ class Settings(BaseSettings):
     FASTRTC_PORT: int = Field(
         default=7860,
         description="FastRTC port for simulated calls",
+    )
+
+    # =========================================================================
+    # STACK B: NVIDIA NIM Services (Riva ASR, Chatterbox TTS)
+    # =========================================================================
+    # Riva ASR NIM
+    RIVA_ASR_GRPC_ENDPOINT: str = Field(
+        default="voice-riva-asr:50051",
+        description="Riva ASR NIM gRPC endpoint",
+    )
+
+    RIVA_ASR_LANGUAGE: str = Field(
+        default="en-US",
+        description="Riva ASR language code (BCP-47)",
+    )
+
+    RIVA_ASR_USE_SSL: bool = Field(
+        default=False,
+        description="Use SSL for Riva ASR gRPC",
+    )
+
+    RIVA_ASR_FUNCTION_ID: Optional[str] = Field(
+        default=None,
+        description="Riva ASR NIM function ID (for NVCF)",
+    )
+
+    # Chatterbox TTS NIM
+    CHATTERBOX_GRPC_ENDPOINT: str = Field(
+        default="voice-chatterbox:50051",
+        description="Chatterbox TTS NIM gRPC endpoint",
+    )
+
+    CHATTERBOX_LANGUAGE: str = Field(
+        default="en-US",
+        description="Chatterbox TTS language code (BCP-47)",
+    )
+
+    CHATTERBOX_VOICE: str = Field(
+        default="Chatterbox-Multilingual.en-US.Female",
+        description="Chatterbox default voice",
+    )
+
+    CHATTERBOX_EMOTION_EXAGGERATION: float = Field(
+        default=0.5,
+        description="Chatterbox emotion exaggeration (0.0-1.0, recommended 0.4-0.7)",
+    )
+
+    CHATTERBOX_USE_SSL: bool = Field(
+        default=False,
+        description="Use SSL for Chatterbox gRPC",
+    )
+
+    CHATTERBOX_FUNCTION_ID: Optional[str] = Field(
+        default=None,
+        description="Chatterbox NIM function ID (for NVCF)",
+    )
+
+    # Riva VAD (uses same endpoint as Riva ASR)
+    RIVA_VAD_THRESHOLD: float = Field(
+        default=0.5,
+        description="Riva VAD threshold (0.0-1.0)",
+    )
+
+    RIVA_VAD_FUNCTION_ID: Optional[str] = Field(
+        default=None,
+        description="Riva VAD NIM function ID (for NVCF)",
+    )
+
+    # NGC API Key for NIM authentication
+    NGC_API_KEY: str = Field(
+        default="",
+        description="NGC API key for NIM container authentication",
     )
 
     # =========================================================================
@@ -314,6 +373,11 @@ class Settings(BaseSettings):
     SMTP_FROM: str = Field(
         default="noreply@ominivoice.com",
         description="SMTP from address",
+    )
+
+    EMAIL_RATE_LIMIT_PER_HOUR: int = Field(
+        default=50,
+        description="Maximum emails per user per hour",
     )
 
     @field_validator("CORS_ORIGINS", mode="before")

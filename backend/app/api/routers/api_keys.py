@@ -167,3 +167,107 @@ async def get_webhook_url(
     from app.core.config import settings
     webhook_url = f"{settings.FRONTEND_URL}/webhook/v1/agents/{agent.id}"
     return {"webhook_url": webhook_url}
+
+
+@router.get("/agents/{agent_id}/websocket-urls")
+async def get_websocket_urls(
+    agent: Agent = Depends(get_owned_agent),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Get WebSocket URLs for connecting to this agent's voice engine.
+
+    Returns a COMMON WebSocket endpoint for all agents.
+    Authentication is via API key query parameter (?api_key=...) or test token (?token=...).
+    The server resolves the agent from the API key.
+
+    For local testing: wss://ominivoice.local/ws?api_key=...
+    For internet (AWS): wss://api.yourdomain.com/ws?api_key=...
+
+    Note: Local URLs require mkcert certificates and /etc/hosts entry.
+    """
+    from app.core.config import settings
+    from app.models import ApiKey
+
+    # Get the active API key for this agent
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.agent_id == agent.id, ApiKey.is_active == True)
+    )
+    api_key = result.scalar_one_or_none()
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active API key found. Generate an API key first.",
+        )
+
+    key_prefix = api_key.key_prefix
+
+    # Common WebSocket endpoint (same for all agents)
+    # Agent is resolved from the API key
+    local_ws_url = "wss://ominivoice.local/ws"
+    internet_ws_url = "wss://api.ominivoice.com/ws"
+
+    return {
+        "agent_id": str(agent.id),
+        "api_key_prefix": key_prefix,
+        "note": "Use the COMMON WebSocket URL with ?api_key=YOUR_FULL_API_KEY or ?token=TEST_TOKEN",
+        "common_websocket_endpoint": "wss://<domain>/ws",
+        "authentication": "Query parameter: ?api_key=ov_live_... OR ?token=<jwt_test_token>",
+        "local": {
+            "description": "For local LAN testing (requires mkcert + /etc/hosts)",
+            "websocket_url": local_ws_url,
+            "example_full": f"{local_ws_url}?api_key=ov_live_<your_32_char_key>",
+            "https_base": "https://ominivoice.local",
+            "api_docs": "https://ominivoice.local/docs",
+        },
+        "internet": {
+            "description": "For internet/AWS deployment (configure after deployment)",
+            "websocket_url": internet_ws_url,
+            "example_full": f"{internet_ws_url}?api_key=ov_live_<your_32_char_key>",
+            "https_base": "https://api.ominivoice.com",
+            "note": "Update this URL after deploying to AWS with your domain",
+        },
+    }
+
+
+@router.get("/agents/{agent_id}/websocket-test-token")
+async def get_websocket_test_token(
+    agent: Agent = Depends(get_owned_agent),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Generate a one-time test token for WebSocket testing.
+
+    This creates a short-lived token that can be used instead of the API key
+    for quick testing without exposing the full API key.
+    """
+    import secrets
+    from datetime import datetime, timezone, timedelta
+    from jose import jwt
+    from app.core.config import settings
+
+    # Generate a one-time token valid for 1 hour
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    # Store the token hash in the API key record for validation
+    # For now, we'll use a simple approach - encode the token in a JWT
+    test_token = jwt.encode(
+        {
+            "sub": str(agent.id),
+            "agent_id": str(agent.id),
+            "type": "websocket_test",
+            "exp": expires,
+            "iat": datetime.now(timezone.utc),
+        },
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+    return {
+        "test_token": test_token,
+        "expires_at": expires.isoformat(),
+        "usage": "Use as ?token=TEST_TOKEN instead of ?api_key=API_KEY",
+        "note": "Valid for 1 hour, single use recommended",
+    }

@@ -4,6 +4,7 @@ Handles user registration, login, token refresh, logout, and current user info.
 """
 from datetime import timedelta
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11,6 +12,7 @@ from pydantic import EmailStr
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -20,6 +22,8 @@ from app.core.security import (
     decode_token,
     get_password_hash,
     verify_password,
+    generate_email_token,
+    verify_email_token,
 )
 from app.models import User
 from app.schemas.schemas import (
@@ -28,8 +32,12 @@ from app.schemas.schemas import (
     UserCreate,
     UserLogin,
     UserResponse,
+    EmailVerificationRequest,
+    PasswordResetRequest,
+    PasswordResetConfirm,
 )
 from app.api.deps import get_current_user, get_redis_client
+from app.tasks.email_tasks import send_verification_email, send_password_reset_email
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -234,6 +242,111 @@ async def logout(
         secure=settings.ENVIRONMENT == "production",
         samesite="lax",
     )
+
+
+@router.post("/verify-email", status_code=status.HTTP_204_NO_CONTENT)
+async def verify_email(
+    request: EmailVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """
+    Verify user's email address using token from email link.
+    """
+    user_id = verify_email_token(request.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if user.is_verified:
+        return  # Already verified
+
+    user.is_verified = True
+    await db.commit()
+
+
+@router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_verification(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """
+    Resend email verification link.
+    """
+    if current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified",
+        )
+
+    from app.core.security import generate_email_token
+    from app.tasks.email_tasks import send_verification_email
+
+    token = generate_email_token(current_user.id)
+    send_verification_email.delay(current_user.email, token)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+async def forgot_password(
+    request: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """
+    Request password reset email.
+    Always returns 204 to prevent email enumeration.
+    """
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # Don't reveal if email exists
+        return
+
+    from app.core.security import generate_email_token
+    from app.tasks.email_tasks import send_password_reset_email
+
+    token = generate_email_token(user.id)
+    send_password_reset_email.delay(user.email, token)
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(
+    request: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """
+    Reset password using token from email link.
+    """
+    from app.core.security import verify_email_token, get_password_hash
+
+    user_id = verify_email_token(request.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.hashed_password = get_password_hash(request.password)
+    await db.commit()
 
 
 @router.get("/me", response_model=UserResponse)

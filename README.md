@@ -74,7 +74,7 @@ OminiVoice enables users to:
 - Python 3.11+ (for backend dev)
 - NVIDIA GPU (optional, for faster STT/TTS)
 
-### Local Development
+### Local Development (HTTP)
 
 ```bash
 # 1. Clone and enter
@@ -91,6 +91,111 @@ docker compose -f infra/docker-compose.yml up --build
 # Frontend: http://localhost:3000
 # API docs: http://localhost:8000/docs
 # Voice Engine WS: ws://localhost:8001/ws
+```
+
+### Local HTTPS Development (Recommended)
+
+For full browser microphone access and production-like environment:
+
+```bash
+# 1. Install mkcert (one-time)
+# macOS: brew install mkcert
+# Ubuntu: sudo apt install mkcert
+
+# 2. Generate certificates
+mkcert -install
+mkcert -key-file infra/nginx/ssl/ominivoice.local-key.pem \
+       -cert-file infra/nginx/ssl/ominivoice.local.pem \
+       ominivoice.local "*.ominivoice.local" localhost 127.0.0.1 ::1
+
+# 3. Add to /etc/hosts (requires sudo)
+echo "127.0.0.1 ominivoice.local" | sudo tee -a /etc/hosts
+
+# 4. Download voice models (required for local voice engine)
+mkdir -p infra/voice_models/kokoro infra/voice_models/piper
+wget -O infra/voice_models/kokoro/kokoro-v1.0.onnx \
+  https://github.com/hexgrad/kokoro/releases/download/v1.0/kokoro-v1.0.onnx
+wget -O infra/voice_models/piper/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en_US/en_US-lessac-medium/en_US-lessac-medium.onnx
+wget -O infra/voice_models/piper/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en_US/en_US-lessac-medium/en_US-lessac-medium.onnx.json
+
+# 5. Copy and edit local environment
+cp infra/.env.example infra/.env.local
+# Edit infra/.env.local with your keys (JWT_SECRET, NVIDIA_API_KEY, STRIPE keys, etc.)
+
+# 6. Launch with local compose
+cd infra
+docker compose -f docker-compose.local.yml up -d --build
+
+# 7. Access the app
+# Frontend: https://ominivoice.local
+# API docs: https://ominivoice.local/docs
+# Health: https://ominivoice.local/health
+```
+
+### Automated Local Launch
+
+```bash
+# Run the launch script (handles certs, hosts, models, docker, stripe webhook)
+./launch.sh
+```
+
+### Manual Development (without Docker)
+
+```bash
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+
+# Voice Engine
+cd voice_engine
+pip install -r requirements.txt
+python server.py
+```
+
+### Local HTTPS Development (Recommended)
+
+For full browser microphone access and production-like environment:
+
+```bash
+# 1. Install mkcert (one-time)
+# macOS: brew install mkcert
+# Ubuntu: sudo apt install mkcert
+
+# 2. Generate certificates
+mkcert -install
+mkcert -key-file infra/nginx/ssl/ominivoice.local-key.pem \
+       -cert-file infra/nginx/ssl/ominivoice.local.pem \
+       ominivoice.local "*.ominivoice.local" localhost 127.0.0.1 ::1
+
+# 3. Add to /etc/hosts (requires sudo)
+echo "127.0.0.1 ominivoice.local" | sudo tee -a /etc/hosts
+
+# 4. Download voice models (required for local voice engine)
+mkdir -p infra/voice_models/kokoro infra/voice_models/piper
+wget -O infra/voice_models/kokoro/kokoro-v1.0.onnx \
+  https://github.com/hexgrad/kokoro/releases/download/v1.0/kokoro-v1.0.onnx
+wget -O infra/voice_models/piper/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en_US/en_US-lessac-medium/en_US-lessac-medium.onnx
+wget -O infra/voice_models/piper/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en_US/en_US-lessac-medium/en_US-lessac-medium.onnx.json
+
+# 5. Launch with local compose
+cd infra
+docker compose -f docker-compose.local.yml up -d --build
+
+# 6. Access the app
+# Frontend: https://ominivoice.local
+# API docs: https://ominivoice.local/docs
+# Health: https://ominivoice.local/health
 ```
 
 ### Manual Development (without Docker)
@@ -241,6 +346,116 @@ Once running, visit:
 3. Make your changes
 4. Run tests: `docker compose -f infra/docker-compose.yml run --rm api pytest`
 5. Submit a PR
+
+## Development Workflow
+
+### Running Tests
+
+```bash
+# Backend tests
+cd backend
+python -m pytest tests/ -v --cov=app
+
+# Frontend tests
+cd frontend
+npm run lint
+npx tsc --noEmit
+npm run build
+
+# Integration tests (requires Docker)
+docker compose -f infra/docker-compose.yml run --rm api pytest tests/ -v
+```
+
+### Load Testing
+
+```bash
+# Install k6
+# macOS: brew install k6
+# Ubuntu: sudo apt install k6
+
+# Run load tests
+export BASE_URL=https://ominivoice.local
+k6 run tests/load/auth.js
+k6 run tests/load/agents.js
+k6 run tests/load/voice.js
+```
+
+### Code Quality
+
+```bash
+# Backend formatting
+cd backend
+ruff check .
+ruff format .
+mypy app/
+
+# Frontend formatting
+cd frontend
+npm run lint
+```
+
+### Database Migrations
+
+```bash
+# Create new migration
+cd backend
+alembic revision --autogenerate -m "description"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions for CI/CD:
+
+- **CI** (`.github/workflows/ci.yml`): Runs on every push/PR
+  - Backend: Ruff, MyPy, Pytest with coverage
+  - Frontend: ESLint, TypeScript check, Build
+  - Docker builds (on main/develop)
+
+- **Security** (`.github/workflows/security.yml`): Runs on push/PR + weekly
+  - pip-audit (Python dependencies)
+  - npm audit (Node.js dependencies)
+  - Bandit (Python SAST)
+  - ESLint security rules (Node.js SAST)
+  - TruffleHog (secret scanning)
+  - Dependency review (PR only)
+  - Trivy (Docker image scanning)
+
+- **CD** (`.github/workflows/cd.yml`): Runs on version tags (v*)
+  - Builds and pushes multi-arch Docker images to GHCR
+  - Deploys to staging (manual) or production (on tag)
+  - Creates GitHub Release with notes
+
+### Required GitHub Secrets
+
+For CI/CD to work, add these secrets to your GitHub repository:
+
+```
+# Docker registry (GHCR uses GITHUB_TOKEN automatically)
+GITHUB_TOKEN
+
+# Staging deployment
+STAGING_HOST
+STAGING_USER
+STAGING_SSH_KEY
+
+# Production deployment
+PRODUCTION_HOST
+PRODUCTION_USER
+PRODUCTION_SSH_KEY
+
+# Stripe (for billing tests)
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+
+# NVIDIA API (for voice engine tests)
+NVIDIA_API_KEY
+```
 
 ## License
 

@@ -1,0 +1,40 @@
+[project]
+name = "voice_engine"
+version = "1.0.0"
+description = "OminiVoice real-time voice pipeline with STT, VAD, TTS, and LLM integration"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "faster-whisper",
+    "kokoro-onnx",
+    "piper-tts",
+    "onnxruntime",
+    "torch",
+    "soundfile",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "faster-whisper[cuda]",
+    "onnxruntime-gpu",
+    "torch[cuda]",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "black",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["."]

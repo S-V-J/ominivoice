@@ -13,10 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies - use Tsinghua mirror for faster downloads
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip --default-timeout=1800 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install --no-cache-dir --default-timeout=1800 -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Copy application code (for development mounting)
+COPY . .
 
 # Production stage
 FROM python:3.11-slim AS production

@@ -2,6 +2,8 @@
 OminiVoice FastAPI Application Entry Point.
 """
 import logging
+import sys
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -12,15 +14,26 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 from jose import JWTError
 
+# Add voice_engine to path for demo server integration
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "voice_engine"))
+
 from app.core.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.logging import setup_logging
-from app.api.routers import auth, agents, api_keys
+from app.core.metrics import metrics_endpoint, MetricsMiddleware
+from app.api.routers import auth, agents, api_keys, billing, queue, call_logs
 from app.core.celery_app import celery_app
-from app.services.llm_service import close_all_providers
+from app.services.llm_service import close_all_providers, get_llm_provider
 
 # Setup logging
 logger = setup_logging()
+
+
+def create_llm_provider_factory():
+    """Create LLM provider factory for voice engine."""
+    def factory(provider_name: str, model: str):
+        return get_llm_provider(provider_name, model)
+    return factory
 
 
 @asynccontextmanager
@@ -56,6 +69,12 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
     lifespan=lifespan,
 )
+
+# Add metrics middleware
+app.add_middleware(MetricsMiddleware)
+
+# Prometheus metrics endpoint
+app.add_route("/metrics", metrics_endpoint, methods=["GET"])
 
 # CORS middleware
 app.add_middleware(
@@ -128,6 +147,18 @@ async def health_check():
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(agents.router, prefix="/agents", tags=["Agents"])
 app.include_router(api_keys.router, prefix="/api", tags=["API Keys"])
+app.include_router(billing.router, tags=["Billing"])
+app.include_router(queue.router, tags=["Cold Call Queue"])
+app.include_router(call_logs.router, tags=["Call Logs"])
+
+# Mount Voice Engine Demo Server as sub-application
+try:
+    from voice_engine.demo_server import create_demo_app
+    demo_app = create_demo_app(create_llm_provider_factory())
+    app.mount("/demo", demo_app)
+    logger.info("Voice Engine Demo Server mounted at /demo")
+except Exception as e:
+    logger.warning(f"Could not mount Voice Engine Demo Server: {e}")
 
 
 if __name__ == "__main__":

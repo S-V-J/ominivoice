@@ -38,6 +38,12 @@ class AgentStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class VoiceStack(str, enum.Enum):
+    """Voice technology stack selection."""
+    STACK_A = "stack_a"  # Local: faster-whisper + Silero + Kokoro/Piper
+    STACK_B = "stack_b"  # NVIDIA NIM: Riva ASR + Riva VAD + Chatterbox TTS
+
+
 class CallDirection(str, enum.Enum):
     """Call direction for logs."""
     INBOUND = "inbound"
@@ -112,11 +118,20 @@ class Agent(Base):
     direction = Column(Enum(AgentDirection), nullable=False)
     status = Column(Enum(AgentStatus), default=AgentStatus.DRAFT, nullable=False)
 
-    # Engine configuration
+    # Voice technology stack
+    voice_stack = Column(Enum(VoiceStack), default=VoiceStack.STACK_A, nullable=False)
+
+    # Engine configuration (Stack A - Local)
     stt_engine = Column(String(50), default="faster-whisper", nullable=False)
     tts_engine = Column(String(50), default="kokoro", nullable=False)
     tts_voice = Column(String(100), default="af_heart", nullable=False)
     language = Column(String(10), default="en", nullable=False)
+
+    # Stack B (NVIDIA NIM) configuration
+    chatterbox_voice = Column(String(100), default="Chatterbox-Multilingual.en-US.Female", nullable=False)
+    chatterbox_emotion_exaggeration = Column(Integer, default=50, nullable=False)  # 0-100, stored as integer percentage
+    riva_asr_language = Column(String(10), default="en-US", nullable=False)
+    riva_vad_threshold = Column(Integer, default=50, nullable=False)  # 0-100, stored as integer percentage
 
     # LLM configuration
     llm_provider = Column(String(50), default="ollama", nullable=False)  # ollama, nvidia

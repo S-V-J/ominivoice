@@ -35,10 +35,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
-COPY voice-engine/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies - use official PyPI with longer timeouts
+# Install heavy ML packages first with extended timeout
+RUN pip install --no-cache-dir --default-timeout=3600 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir --default-timeout=3600 ctranslate2==4.4.0 && \
+    pip install --no-cache-dir --default-timeout=1200 -r requirements.txt
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
@@ -72,11 +75,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY voice-engine/requirements.txt ./requirements.txt
-COPY voice-engine/requirements-gpu.txt ./requirements-gpu.txt
+COPY requirements.txt ./requirements.txt
+COPY requirements-gpu.txt ./requirements-gpu.txt
 
 # Install with CUDA support for faster-whisper, ONNX GPU, etc.
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-gpu.txt
+RUN pip install --no-cache-dir --default-timeout=3600 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install --no-cache-dir --default-timeout=3600 ctranslate2==4.4.0 && \
+    pip install --no-cache-dir --default-timeout=1200 -r requirements.txt -r requirements-gpu.txt
 
 ################################################################################
 # PRODUCTION - CPU-only runtime
@@ -88,7 +93,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY voice-engine/ ./voice-engine/
+COPY . ./voice_engine/
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
@@ -111,7 +116,7 @@ FROM gpu-base AS production-gpu
 COPY --from=gpu-builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY voice-engine/ ./voice-engine/
+COPY . ./voice-engine/
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && chown -R appuser:appuser /app

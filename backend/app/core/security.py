@@ -1,168 +1,172 @@
 """
-Security utilities for JWT tokens and password hashing.
+Security utilities for OminiVoice.
 """
+import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from jose import jwt, JWTError
 
 from app.core.config import settings
 
 
-# Password hashing context using bcrypt
+# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-class TokenPayload(BaseModel):
-    """JWT token payload schema."""
-    sub: str  # user_id
-    exp: int  # expiration timestamp
-    iat: int  # issued at timestamp
-    type: str  # "access" or "refresh"
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verify a plain password against its hash.
-
-    Args:
-        plain_password: The plain text password to verify
-        hashed_password: The stored bcrypt hash
-
-    Returns:
-        True if password matches, False otherwise
-    """
-    return pwd_context.verify(plain_password, hashed_password)
-
-
 def get_password_hash(password: str) -> str:
-    """
-    Hash a password using bcrypt.
-
-    Args:
-        password: The plain text password to hash
-
-    Returns:
-        The bcrypt hash string
-    """
+    """Hash a password using bcrypt."""
     return pwd_context.hash(password)
 
 
-def create_access_token(
-    subject: str,
-    expires_delta: Optional[timedelta] = None,
-) -> str:
-    """
-    Create a JWT access token.
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash."""
+    return pwd_context.verify(plain_password, hashed_password)
 
-    Args:
-        subject: The user ID (sub claim)
-        expires_delta: Optional custom expiration delta
 
-    Returns:
-        Encoded JWT access token
-    """
+# JWT token handling
+ALGORITHM = settings.JWT_ALGORITHM
+SECRET_KEY = settings.JWT_SECRET
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+
+
+def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a JWT access token."""
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    to_encode = {
-        "sub": str(subject),
-        "exp": int(expire.timestamp()),
-        "iat": int(datetime.now(timezone.utc).timestamp()),
-        "type": "access",
-    }
-
-    return jwt.encode(
-        to_encode,
-        settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM,
-    )
+    to_encode = {"sub": subject, "exp": expire, "type": "access", "iat": datetime.utcnow()}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(subject: str) -> str:
-    """
-    Create a JWT refresh token.
+def create_refresh_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a JWT refresh token."""
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
-    Args:
-        subject: The user ID (sub claim)
-
-    Returns:
-        Encoded JWT refresh token
-    """
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
-    )
-
-    to_encode = {
-        "sub": str(subject),
-        "exp": int(expire.timestamp()),
-        "iat": int(datetime.now(timezone.utc).timestamp()),
-        "type": "refresh",
-    }
-
-    return jwt.encode(
-        to_encode,
-        settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM,
-    )
+    to_encode = {"sub": subject, "exp": expire, "type": "refresh", "iat": datetime.utcnow()}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
-    """
-    Decode and validate a JWT token.
-
-    Args:
-        token: The JWT token string
-
-    Returns:
-        Dict with decoded claims
-
-    Raises:
-        jwt.JWTError: If token is invalid or expired
-    """
-    payload = jwt.decode(
-        token,
-        settings.JWT_SECRET,
-        algorithms=[settings.JWT_ALGORITHM],
-    )
-    return payload
+    """Decode and validate a JWT token."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        raise
 
 
+# API Key generation
 def generate_api_key() -> tuple[str, str]:
     """
-    Generate a new API key and its hash.
+    Generate a secure API key.
 
     Returns:
-        Tuple of (plaintext_key, key_hash)
-        plaintext_key is shown once to user, key_hash is stored in DB
+        tuple: (plaintext_key, key_hash)
     """
-    # Format: ov_live_<32 url-safe random chars>
-    random_part = secrets.token_urlsafe(24)  # 32 chars after base64 encoding
-    plaintext_key = f"ov_live_{random_part}"
-
-    # Hash for storage (SHA-256)
-    import hashlib
+    # Generate 32 bytes = 256 bits of entropy
+    random_bytes = secrets.token_bytes(32)
+    plaintext_key = "ov_live_" + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(plaintext_key.encode()).hexdigest()
-
     return plaintext_key, key_hash
 
 
 def hash_api_key(key: str) -> str:
-    """
-    Hash an API key for storage/comparison.
+    """Hash an API key for storage."""
+    return hashlib.sha256(key.encode()).hexdigest()
 
-    Args:
-        key: The plaintext API key
+
+# Input validation
+MAX_CSV_SIZE = 5 * 1024 * 1024  # 5 MB
+ALLOWED_CSV_MIME_TYPES = ["text/csv", "application/csv", "text/plain"]
+
+
+def validate_csv_upload(file_size: int, content_type: str) -> Optional[str]:
+    """
+    Validate CSV upload.
 
     Returns:
-        SHA-256 hex digest
+        Error message if invalid, None if valid
     """
-    import hashlib
-    return hashlib.sha256(key.encode()).hexdigest()
+    if file_size > MAX_CSV_SIZE:
+        return f"File size exceeds maximum of {MAX_CSV_SIZE // (1024*1024)} MB"
+
+    if content_type not in ALLOWED_CSV_MIME_TYPES:
+        return f"Invalid file type. Expected CSV, got {content_type}"
+
+    return None
+
+
+# Rate limiting keys
+def get_rate_limit_key(request, prefix: str = "api") -> str:
+    """Generate rate limit key from request."""
+    client_ip = request.client.host if request.client else "unknown"
+    return f"{prefix}:{client_ip}"
+
+
+# CORS origins validation
+def validate_cors_origin(origin: str, allowed_origins: list) -> bool:
+    """Validate that origin is in allowed list."""
+    if not allowed_origins or "*" in allowed_origins:
+        return True
+    return origin in allowed_origins
+
+
+# Email verification tokens (separate from JWT for security)
+EMAIL_TOKEN_EXPIRE_HOURS = 24
+
+
+def generate_email_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+    """Generate a secure email verification/reset token."""
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(hours=EMAIL_TOKEN_EXPIRE_HOURS)
+
+    # Use a separate secret for email tokens
+    email_secret = settings.JWT_SECRET + "_email"
+    to_encode = {"sub": subject, "exp": expire, "type": "email", "iat": datetime.utcnow()}
+    return jwt.encode(to_encode, email_secret, algorithm=ALGORITHM)
+
+
+def verify_email_token(token: str) -> Optional[str]:
+    """Verify an email token and return the subject (user_id)."""
+    try:
+        email_secret = settings.JWT_SECRET + "_email"
+        payload = jwt.decode(token, settings.JWT_SECRET + "_email", algorithms=[ALGORITHM])
+        if payload.get("type") != "email":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+# Security headers
+SECURITY_HEADERS = {
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "1; mode=block",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "microphone=(), camera=(), geolocation=()",
+}
+
+# Content Security Policy for production
+CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https:; "
+    "font-src 'self' data:; "
+    "connect-src 'self' wss: https:; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self';"
+)

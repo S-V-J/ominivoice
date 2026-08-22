@@ -42,6 +42,9 @@ phonenumbers==8.13.40
 # Stripe
 stripe==11.0.0
 
+# Email templates
+jinja2==3.1.4
+
 # Testing
 pytest==8.3.3
 pytest-asyncio==0.23.7
@@ -55,3 +58,4 @@ isort==5.13.2
 mypy==1.11.2
 ruff==0.5.7
 pre-commit==3.8.0
+aiosmtplib==3.0.1

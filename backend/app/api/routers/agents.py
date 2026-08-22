@@ -58,21 +58,45 @@ async def create_agent(
 
     - **name**: Agent name
     - **direction**: inbound or outbound
+    - **voice_stack**: stack_a (local) or stack_b (NVIDIA NIM)
     - All prompt fields are optional (for drafts)
     """
+    # Voice stack (default to stack_a)
+    voice_stack = agent_in.voice_stack or VoiceStack.STACK_A
+    voice_stack_value = voice_stack.value if hasattr(voice_stack, 'value') else str(voice_stack)
+
+    # Stack B fields - convert emotion percentage from 0.0-1.0 to integer 0-100
+    chatterbox_emotion = agent_in.chatterbox_emotion_exaggeration
+    if chatterbox_emotion is not None and chatterbox_emotion <= 1.0:
+        chatterbox_emotion = int(chatterbox_emotion * 100)
+    elif chatterbox_emotion is None:
+        chatterbox_emotion = 50
+
+    riva_vad_threshold = agent_in.riva_vad_threshold
+    if riva_vad_threshold is not None and riva_vad_threshold <= 1.0:
+        riva_vad_threshold = int(riva_vad_threshold * 100)
+    elif riva_vad_threshold is None:
+        riva_vad_threshold = 50
+
     agent = Agent(
         owner_id=current_user.id,
         name=agent_in.name,
         direction=agent_in.direction,
         status=AgentStatus.DRAFT,
-        # Engine config
+        voice_stack=voice_stack_value,
+        # Engine config (Stack A - Local)
         stt_engine=agent_in.stt_engine.value if agent_in.stt_engine else "faster-whisper",
         tts_engine=agent_in.tts_engine.value if agent_in.tts_engine else "kokoro",
         tts_voice=agent_in.tts_voice or "af_heart",
         language=agent_in.language or "en-US",
+        # Stack B (NVIDIA NIM) config
+        chatterbox_voice=agent_in.chatterbox_voice or "Chatterbox-Multilingual.en-US.Female",
+        chatterbox_emotion_exaggeration=chatterbox_emotion,
+        riva_asr_language=agent_in.riva_asr_language or "en-US",
+        riva_vad_threshold=riva_vad_threshold,
         # LLM config
-        llm_provider=agent_in.llm_provider.value if agent_in.llm_provider else "ollama_local",
-        llm_model=agent_in.llm_model or "qwen3:4b",
+        llm_provider=agent_in.llm_provider.value if agent_in.llm_provider else "nvidia_integrate",
+        llm_model=agent_in.llm_model or "stepfun-ai/step-3.7-flash",
         # Prompts (all nullable)
         system_prompt=agent_in.system_prompt,
         interruption_sensitivity=agent_in.interruption_sensitivity.value if agent_in.interruption_sensitivity else "medium",
@@ -178,6 +202,9 @@ async def update_agent(
         "voicemail_prompt", "closing_prompt", "escalation_rule",
         "greeting_prompt", "qualification_prompt", "knowledge_prompt",
         "fallback_prompt", "handoff_prompt",
+        # Stack B fields
+        "voice_stack", "chatterbox_voice", "chatterbox_emotion_exaggeration",
+        "riva_asr_language", "riva_vad_threshold",
     ]
 
     for field in prompt_fields:
@@ -188,6 +215,11 @@ async def update_agent(
             # Convert enum values to strings for storage
             if hasattr(new_value, 'value'):
                 new_value = new_value.value
+
+            # Convert float percentages to integer for storage
+            if field in ("chatterbox_emotion_exaggeration", "riva_vad_threshold") and isinstance(new_value, float):
+                if new_value <= 1.0:
+                    new_value = int(new_value * 100)
 
             if old_value != new_value:
                 # Create version record
@@ -205,6 +237,12 @@ async def update_agent(
             # Convert enum values to strings
             if hasattr(value, 'value'):
                 value = value.value
+
+            # Convert float percentages to integer for storage
+            if field in ("chatterbox_emotion_exaggeration", "riva_vad_threshold") and isinstance(value, float):
+                if value <= 1.0:
+                    value = int(value * 100)
+
             setattr(agent, field, value)
 
     agent.updated_at = datetime.now(timezone.utc)
@@ -371,11 +409,18 @@ async def _build_agent_response(db: AsyncSession, agent: Agent) -> AgentResponse
         name=agent.name,
         direction=agent.direction,
         status=agent.status,
-        # Engine config
+        # Voice stack
+        voice_stack=agent.voice_stack,
+        # Engine config (Stack A - Local)
         stt_engine=agent.stt_engine,
         tts_engine=agent.tts_engine,
         tts_voice=agent.tts_voice,
         language=agent.language,
+        # Stack B (NVIDIA NIM) config
+        chatterbox_voice=agent.chatterbox_voice,
+        chatterbox_emotion_exaggeration=agent.chatterbox_emotion_exaggeration / 100.0 if agent.chatterbox_emotion_exaggeration > 1 else (agent.chatterbox_emotion_exaggeration or 0.5),
+        riva_asr_language=agent.riva_asr_language,
+        riva_vad_threshold=agent.riva_vad_threshold / 100.0 if agent.riva_vad_threshold > 1 else (agent.riva_vad_threshold or 0.5),
         # LLM config
         llm_provider=agent.llm_provider,
         llm_model=agent.llm_model,
@@ -420,6 +465,9 @@ async def _calculate_completeness(agent: Agent) -> dict:
         "interruption_sensitivity", "max_call_duration_s", "silence_timeout_s",
         "stt_engine", "tts_engine", "tts_voice", "language",
         "llm_provider", "llm_model",
+        # Stack B fields
+        "voice_stack", "chatterbox_voice", "chatterbox_emotion_exaggeration",
+        "riva_asr_language", "riva_vad_threshold",
     ]
     for field in optional_fields:
         value = getattr(agent, field, None)

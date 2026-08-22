@@ -69,7 +69,6 @@ class PlanTier(str, Enum):
 
 class LLMPROVIDER(str, Enum):
     """LLM provider options."""
-    OLLAMA_LOCAL = "ollama_local"
     NVIDIA_INTEGRATE = "nvidia_integrate"
 
 
@@ -82,6 +81,7 @@ class TTSEngine(str, Enum):
     """TTS engine options."""
     KOKORO = "kokoro"
     PIPER = "piper"
+    CHATTERBOX = "chatterbox"
 
 
 class InterruptionSensitivity(str, Enum):
@@ -89,6 +89,12 @@ class InterruptionSensitivity(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class VoiceStack(str, Enum):
+    """Voice technology stack selection."""
+    STACK_A = "stack_a"  # Local: faster-whisper + Silero + Kokoro/Piper
+    STACK_B = "stack_b"  # NVIDIA NIM: Riva ASR + Riva VAD + Chatterbox TTS
 
 
 # =============================================================================
@@ -165,12 +171,31 @@ class TokenRefresh(BaseSchema):
     refresh_token: Optional[str] = None
 
 
+class EmailVerificationRequest(BaseSchema):
+    """Schema for email verification request."""
+    token: str = Field(..., description="Verification token from email")
+
+
+class PasswordResetRequest(BaseSchema):
+    """Schema for password reset request (forgot password)."""
+    email: EmailStr = Field(..., description="User's email address")
+
+
+class PasswordResetConfirm(BaseSchema):
+    """Schema for password reset confirmation."""
+    token: str = Field(..., description="Reset token from email")
+    password: str = Field(..., min_length=8, max_length=128, description="New password")
+
+
 # =============================================================================
 # Agent schemas
 # =============================================================================
 
 class AgentPromptFields(BaseSchema):
     """All prompt fields for an agent (nullable for drafts)."""
+
+    # Voice technology stack
+    voice_stack: Optional[VoiceStack] = Field(VoiceStack.STACK_A, description="Voice technology stack")
 
     # Shared fields
     system_prompt: Optional[str] = Field(None, description="Core persona, tone, do's/don'ts")
@@ -180,15 +205,27 @@ class AgentPromptFields(BaseSchema):
     max_call_duration_s: Optional[int] = Field(300, ge=30, le=7200, description="Max call duration in seconds")
     silence_timeout_s: Optional[int] = Field(10, ge=1, le=60, description="Silence timeout in seconds")
 
-    # Engine configuration
+    # Engine configuration (Stack A - Local)
     stt_engine: Optional[STTEngine] = Field(STTEngine.FASTER_WHISPER)
     tts_engine: Optional[TTSEngine] = Field(TTSEngine.KOKORO)
     tts_voice: Optional[str] = Field("af_heart", description="TTS voice ID")
     language: Optional[str] = Field("en-US", description="Language code")
 
+    # Stack B (NVIDIA NIM) configuration
+    # Chatterbox TTS voices: https://github.com/resemble-ai/chatterbox#voices
+    chatterbox_voice: Optional[str] = Field(
+        "Chatterbox-Multilingual.en-US.Female",
+        description="Chatterbox voice (e.g., Chatterbox-Multilingual.en-US.Female, Chatterbox-Multilingual.es-US.Male)"
+    )
+    chatterbox_emotion_exaggeration: Optional[float] = Field(
+        0.5, ge=0.0, le=1.0, description="Chatterbox emotion exaggeration (0.0-1.0, recommended 0.4-0.7)"
+    )
+    riva_asr_language: Optional[str] = Field("en-US", description="Riva ASR language code (BCP-47)")
+    riva_vad_threshold: Optional[float] = Field(0.5, ge=0.0, le=1.0, description="Riva VAD threshold")
+
     # LLM configuration
-    llm_provider: Optional[LLMPROVIDER] = Field(LLMPROVIDER.OLLAMA_LOCAL)
-    llm_model: Optional[str] = Field("qwen3:4b", description="LLM model identifier")
+    llm_provider: Optional[LLMPROVIDER] = Field(LLMPROVIDER.NVIDIA_INTEGRATE)
+    llm_model: Optional[str] = Field("stepfun-ai/step-3.7-flash", description="LLM model identifier")
 
     # Outbound-specific fields
     opening_line: Optional[str] = Field(None, description="First thing said when callee picks up")
@@ -224,23 +261,40 @@ class AgentUpdate(BaseSchema):
     direction: Optional[AgentDirection] = None
     status: Optional[AgentStatus] = None
 
-    # Include all prompt fields as optional
+    # Voice stack
+    voice_stack: Optional[VoiceStack] = None
+
+    # Shared fields
     system_prompt: Optional[str] = None
     interruption_sensitivity: Optional[InterruptionSensitivity] = None
     max_call_duration_s: Optional[int] = Field(None, ge=30, le=7200)
     silence_timeout_s: Optional[int] = Field(None, ge=1, le=60)
+
+    # Stack A (Local) engine configuration
     stt_engine: Optional[STTEngine] = None
     tts_engine: Optional[TTSEngine] = None
     tts_voice: Optional[str] = None
     language: Optional[str] = None
+
+    # Stack B (NVIDIA NIM) configuration
+    chatterbox_voice: Optional[str] = None
+    chatterbox_emotion_exaggeration: Optional[float] = Field(None, ge=0.0, le=1.0)
+    riva_asr_language: Optional[str] = None
+    riva_vad_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+    # LLM configuration
     llm_provider: Optional[LLMPROVIDER] = None
     llm_model: Optional[str] = None
+
+    # Outbound-specific fields
     opening_line: Optional[str] = None
     objective_prompt: Optional[str] = None
     objection_handling_prompt: Optional[str] = None
     voicemail_prompt: Optional[str] = None
     closing_prompt: Optional[str] = None
     escalation_rule: Optional[str] = None
+
+    # Inbound-specific fields
     greeting_prompt: Optional[str] = None
     qualification_prompt: Optional[str] = None
     knowledge_prompt: Optional[str] = None
@@ -433,6 +487,7 @@ class CheckoutSessionResponse(BaseSchema):
     """Schema for checkout session response."""
     session_id: str
     url: str
+    client_secret: Optional[str] = None
 
 
 class PortalSessionResponse(BaseSchema):

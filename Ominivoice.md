@@ -256,17 +256,476 @@ Build prompt: *"Checklist and fix: secrets never logged, API keys shown once and
 
 ---
 
+## PHASE 10 — Production hardening & operational readiness
+
+### 10.1 Missing Frontend Features
+Build prompt: *"Implement missing frontend features:
+- **Call Logs tab** in AgentDetail: paginated list of calls with transcript, duration, status, direction, download audio (if recorded)
+- **Email verification flow**: register → send verification email → verify token → activate account
+- **Password reset flow**: forgot password → send reset email → reset form → new password
+- **Invoice history** in Account tab: fetch from Stripe, display with download PDF
+- **Stripe Elements** integration: secure payment method collection in checkout
+- **Notification preferences** in Settings: functional email toggle with backend endpoint"*
+
+### 10.2 Email Infrastructure
+Build prompt: *"Add email infrastructure using aiosmtplib:
+- SMTP configuration in settings (host, port, user, password, from)
+- Email templates (Jinja2): verification, password reset, queue failure alerts, invoice receipts
+- Background Celery task `send_email` with retry logic
+- Email rate limiting per user
+- Test mode: log emails to console instead of sending"*
+
+### 10.3 Call Logs & Recording
+Build prompt: *"Implement Call Logs tab and recording:
+- Store call audio (optional): save WebRTC audio chunks to MinIO/S3-compatible storage
+- Call Logs tab: filter by date, status, direction; columns: start time, duration, status, direction, transcript preview, download audio
+- Call detail modal: full transcript, audio player, metadata (interruptions, latency)
+- API endpoint `GET /agents/{id}/calls` with pagination and filters"*
+
+### 10.4 Stripe Elements & Payment Methods
+Build prompt: *"Integrate Stripe Elements for secure payment collection:
+- Frontend: `PaymentElement` in checkout flow
+- Backend: `SetupIntent` for saving payment methods
+- Webhook: `payment_method.attached`, `invoice.payment_failed`
+- Update Account tab: list saved payment methods, set default, remove"*
+
+### 10.5 CI/CD Pipeline
+Build prompt: *"Create GitHub Actions workflows:
+- `.github/workflows/ci.yml`: lint (ruff/mypy), type-check, test (pytest), build Docker images
+- `.github/workflows/cd.yml`: on tag push, build & push multi-arch images to GHCR, deploy to staging
+- `.github/workflows/security.yml`: dependency audit (pip-audit), SAST (bandit), secret scan (trufflehog)
+- Required status checks on PRs"*
+
+### 10.6 Database Migration Strategy
+Build prompt: *"Production-ready Alembic setup:
+- `alembic.ini` with `script_location` and `sqlalchemy.url` from env
+- Naming convention for constraints
+- `alembic upgrade head` in Docker entrypoint (with lock)
+- Down migration testing in CI
+- Migration backup: `pg_dump --schema-only` before upgrade"*
+
+### 10.7 Secrets Management
+Build prompt: *"Replace `.env` files with proper secrets management:
+- Development: `.env.local` (gitignored) + 1Password CLI / direnv
+- Production: Docker secrets or AWS Secrets Manager / HashiCorp Vault
+- CI/CD: GitHub Environments with secrets
+- Rotation policy: JWT_SECRET quarterly, DB password monthly, API keys on compromise"*
+
+### 10.8 Log Aggregation & Error Tracking
+Build prompt: *"Add observability integrations:
+- **Structlog → Loki/Grafana**: Docker logging driver `loki`, structured JSON logs
+- **Sentry**: `sentry-sdk[fastapi]` for error tracking, release tracking, performance monitoring
+- **Health checks**: `/health/live` (liveness), `/health/ready` (readiness with DB/Redis checks)
+- **Uptime monitoring**: Prometheus `blackbox_exporter` + Alertmanager → PagerDuty/Opsgenie"*
+
+### 10.9 Backup & Restore Automation
+Build prompt: *"Automated backup strategy:
+- Daily: `pg_dump -Fc` → S3/GCS with lifecycle (30 days)
+- Weekly: full volume snapshots (Docker volumes)
+- Point-in-time recovery: WAL archiving (wal-g or pgBackRest)
+- Restore runbook: `docs/RESTORE.md` with tested procedures
+- Monthly restore test in CI"*
+
+### 10.10 Load Testing & Performance Baselines
+Build prompt: *"Create k6 load test scripts:
+- `tests/load/auth.js`: register/login burst (100 VUs)
+- `tests/load/agents.js`: CRUD operations (50 VUs)
+- `tests/load/voice.js`: WebSocket audio streaming (20 VUs, 5min calls)
+- CI threshold: p95 < 500ms, error rate < 0.1%
+- Baseline results stored in `tests/load/baselines/`"*
+
+### 10.11 Admin Dashboard
+Build prompt: *"Build internal admin panel (separate subdomain, IP-restricted):
+- User management: list, search, impersonate, suspend, view agents/calls
+- Platform metrics: revenue (Stripe), active users, calls/minute, queue depth
+- Agent oversight: view any agent config, call logs, usage
+- Billing: subscription management, refunds, trial grants
+- Feature flags: toggle features per user/plan
+- Audit log: all admin actions logged"*
+
+### 10.12 Team Collaboration & RBAC
+Build prompt: *"Multi-user accounts with roles:
+- `User` model: add `account_id` (foreign key to `Account`), `role` (owner, admin, member, viewer)
+- `Account` model: name, owner_id, stripe_customer_id, settings
+- Invitations: email invite → accept → join account
+- Permissions: owner (all), admin (manage agents/queue), member (view/use), viewer (read-only)
+- API keys per account (not per user)"*
+
+---
+
+## PHASE 11 — Local launch validation & documentation
+
+### 11.1 Local Network Launch Checklist
+Build prompt: *"Create `LAUNCH_CHECKLIST.md` for local network deployment:
+- [ ] All `.env.local` files configured with valid secrets
+- [ ] Model files downloaded (`infra/voice_models/`)
+- [ ] SSL certs generated for local HTTPS (`mkcert`)
+- [ ] `docker compose -f infra/docker-compose.local.yml up -d`
+- [ ] Health checks pass: `curl -k https://ominivoice.local/health`
+- [ ] Register test user, create agent, import queue, start test call
+- [ ] Verify WebSocket audio streaming works on LAN
+- [ ] Test Stripe webhook with `stripe listen --forward-to`"*
+
+### 11.2 Local Docker Compose
+Build prompt: *"Create `infra/docker-compose.local.yml`:
+- Same as prod but with `--reload` for dev
+- `mkcert` certificates mounted for `ominivoice.local`
+- Hosts file entry: `127.0.0.1 ominivoice.local`
+- Stripe CLI forwarding: `stripe listen --forward-to https://ominivoice.local/billing/webhook`
+- Debug ports exposed (Python 5678, Node 9229)"*
+
+### 11.3 Complete Documentation
+Build prompt: *"Finalize documentation:
+- `docs/ARCHITECTURE.md`: system diagram, data flows, security model
+- `docs/API_REFERENCE.md`: auto-generated from OpenAPI + manual annotations
+- `docs/VOICE_ENGINE.md`: pipeline details, stack comparison, tuning guide
+- `docs/QUEUE_HANDOFF.md`: external dialer integration contract
+- `docs/SECURITY.md`: threat model, data flow, compliance notes
+- `docs/CONTRIBUTING.md`: code style, PR process, release process"*
+
+### 11.4 Accessibility & Internationalization
+Build prompt: *"Accessibility (WCAG 2.1 AA) and i18n:
+- Semantic HTML, ARIA labels, focus management, color contrast
+- Keyboard navigation for all interactive elements
+- `react-i18next` setup with English/Spanish/French locales
+- RTL support for Arabic/Hebrew
+- Screen reader testing with NVDA/VoiceOver"*
+
+---
+
 ## Suggested build order (checklist)
 
-- [ ] Phase 0 — repo, docker-compose skeleton
-- [ ] Phase 1 — auth + multi-tenant models
-- [ ] Phase 2 — agent CRUD + prompt fields + AI-rewrite
-- [ ] Phase 3 — API key + webhook
-- [ ] Phase 4 — voice engine (STT/VAD/LLM/TTS/full-duplex pipeline)
-- [ ] Phase 5 — simulated test-call page (FastRTC)
-- [ ] Phase 6 — frontend shell + all tabs
-- [ ] Phase 7 — cold-call queue + import
-- [ ] Phase 8 — billing
-- [ ] Phase 9 — tests, observability, deploy, security
+- [x] **Phase 0** — repo, docker-compose skeleton, README, MIT/Apache-2.0 license
+- [x] **Phase 1** — auth + multi-tenant models (User, Agent, ApiKey, CallLog, ColdCallQueueEntry, Subscription, RefreshToken, AgentPromptVersion), JWT access+refresh, bcrypt, rate limiting
+- [x] **Phase 2** — agent CRUD, 14 prompt fields per direction (outbound: system, opening, objective, objection, voicemail, closing, escalation; inbound: system, greeting, qualification, knowledge, fallback, handoff), shared config (stack A/B, engines, sensitivity, duration), prompt version history, completeness endpoint, **AI rewrite endpoint** (POST /agents/{id}/rewrite-prompt)
+- [x] **Phase 3** — API key generation (ov_live_<32 chars>, SHA-256 hash, shown once), deterministic webhook URL, key regen/revoke, usage stats, masked key display
+- [x] **Phase 4** — voice engine (STT/VAD/LLM/TTS/full-duplex pipeline with barge-in)
+- [x] **Phase 5** — simulated test-call page (FastRTC/WebRTC)
+- [x] **Phase 6** — frontend shell + all tabs (Dashboard, Configure, Test, API, Versions, Settings, About/Dev, Account)
+- [x] **Phase 7** — cold-call queue + CSV/API import + Celery worker + external dialer webhook handoff
+- [x] **Phase 8** — billing (Stripe Checkout, portal, webhooks, usage stats, plan gating, Account tab) — **backend implemented**
+- [x] **Phase 9** — tests, observability, deploy, security
+- [x] **Phase 10** — production hardening: email, Call Logs, Stripe Elements, CI/CD, migrations, secrets, logging, backup, load testing, admin, RBAC
+- [x] **Phase 11** — local launch validation: checklist, local docker-compose, docs, accessibility/i18n
 
 Build strictly in this order — Phase 5 needs Phase 4's pipeline contract, Phase 6 needs Phase 2/3/7 endpoints to render against, Phase 8 needs Phase 1's user model.
+
+---
+
+## 📝 Implementation Notes (as of 2026-08-17)
+
+### Architecture Decisions Made
+- **LLM Provider**: Exclusively NVIDIA `integrate.api.nvidia.com` with `stepfun-ai/step-3.7-flash` (no Ollama fallback)
+- **Voice Stacks**: Dual-stack architecture
+  - **Stack A (Local)**: faster-whisper + Silero VAD + Kokoro/Piper TTS
+  - **Stack B (NVIDIA NIM)**: Riva ASR + Riva VAD + Chatterbox TTS (GPU required)
+- **Database**: PostgreSQL with UUID PKs, JSONB for transcripts/payloads, Alembic migrations
+- **Auth**: Hand-rolled JWT (access 30min, refresh 7d) + bcrypt, refresh token rotation stored in DB
+- **Simulated Calls**: FastRTC WebRTC in browser → WebSocket → Pipecat pipeline → WebSocket → browser (no PSTN/SIP)
+
+### Key Files Created/Modified
+| Component | Key Files |
+|-----------|-----------|
+| **Backend Models** | `backend/app/models/models.py` — All SQLAlchemy models with dual-stack fields |
+| **Agent API** | `backend/app/api/routers/agents.py` — CRUD, completeness, versions, AI rewrite |
+| **API Keys** | `backend/app/api/routers/api_keys.py` — Generate, regen, revoke, webhook URL |
+| **Auth API** | `backend/app/api/routers/auth.py` — Register, login, refresh, logout, me |
+| **LLM Service** | `backend/app/services/llm_service.py` — NvidiaIntegrateProvider (SSE streaming) |
+| **Config** | `backend/app/core/config.py` — Full settings for both stacks + NIM endpoints |
+| **Voice Pipeline** | `voice_engine/pipeline.py` — Full-duplex with barge-in, turn logging |
+| **STT** | `voice_engine/stt.py` + `stt_riva.py` — faster-whisper + Riva ASR |
+| **Turn Detection** | `voice_engine/turn_detection.py` + `turn_detection_riva.py` — Silero + semantic / Riva VAD |
+| **TTS** | `voice_engine/tts.py` + `tts_chatterbox.py` — Kokoro/Piper + Chatterbox NIM |
+| **Prompt Builder** | `voice_engine/prompt_builder.py` — Direction-aware system prompt assembly |
+| **Telephony Adapter** | `voice_engine/telephony_adapter.py` — Abstract interface + BrowserSimulatedCallSession |
+| **Demo Server** | `voice_engine/demo_server.py` — FastAPI + WebSocket + embedded HTML test page |
+| **Billing API** | `backend/app/api/routers/billing.py` — Stripe checkout, portal, webhooks, usage stats |
+| **Frontend AgentDetail** | `frontend/src/pages/AgentDetail.tsx` — 4 tabs (Configure, Test, API, Versions) |
+| **Frontend Dashboard** | `frontend/src/pages/Dashboard.tsx` — Agent cards, create modal |
+| **Frontend Settings** | `frontend/src/pages/Settings.tsx` — Profile, Security, Billing, Notifications tabs |
+| **Frontend AboutDev** | `frontend/src/pages/AboutDev.tsx` — Product info, Swagger, OSS credits, changelog |
+| **Frontend Account** | `frontend/src/pages/Account.tsx` — Plan card, usage bars, comparison table, invoices |
+| **Frontend Queue Tab** | `frontend/src/components/QueueTab.tsx` — Cold call queue with import, table, stats |
+| **Queue Router** | `backend/app/api/routers/queue.py` — CSV/JSON import, CRUD, stats, retry |
+| **Queue Tasks** | `backend/app/tasks/queue_tasks.py` — Celery tasks for queue processing |
+| **Frontend Demo Hook** | `frontend/src/hooks/useDemoCall.ts` — WebRTC audio I/O, transcript, state |
+| **Docker Compose** | `infra/docker-compose.yml` — 10 services (pg, redis, api, worker, scheduler, voice-engine, riva-asr, chatterbox, frontend, nginx) |
+
+### Database Schema (Alembic: `947f600fb21d`)
+- `users` — email (unique), hashed_password, plan, stripe_customer_id
+- `agents` — owner_id, name, direction, status, voice_stack, 14 prompt fields, engine configs, limits
+- `agent_prompt_versions` — agent_id, field_name, old_value, new_value, edited_at
+- `api_keys` — agent_id, user_id, key_hash (SHA256), key_prefix, webhook_url, is_active, last_used_at
+- `call_logs` — agent_id, direction, caller_ref, transcript (JSONB), duration_s, status, timestamps
+- `cold_call_queue_entries` — agent_id, contact_name, phone_number (unique per agent), status, payload (JSONB)
+- `subscriptions` — user_id (unique), stripe ids, plan, status, period dates
+- `refresh_tokens` — user_id, token_hash (SHA256), expires_at, revoked_at, user_agent, ip
+
+### Frontend State
+- React 18 + Vite + TypeScript + Tailwind CSS
+- React Router v6, Zustand stores (auth, agent, demoCall)
+- Axios with JWT auto-refresh interceptor
+- Heroicons for UI, react-hot-toast for notifications
+- **Built pages**: Dashboard, AgentDetail (Configure, Test, API & Webhook, Prompt History), Settings, About/Dev, Account
+- **All Phase 6 pages complete**
+
+### Voice Engine Stack
+```
+Audio Input (16kHz, 20ms frames)
+    │
+    ▼
+VAD (Silero/Riva) → Turn Detector (silence + semantic endpointing)
+    │
+    ▼
+STT (faster-whisper/Riva ASR) — streaming, interim + final
+    │
+    ▼
+LLM (NVIDIA Integrate SSE) — streaming tokens
+    │
+    ▼
+TTS (Kokoro/Piper/Chatterbox) — streaming audio chunks
+    │
+    ▼
+Audio Output (WebRTC → browser speaker)
+```
+
+**Barge-in Flow**: VAD detects user speech during TTS → stop TTS → cancel LLM stream → truncate history to `spoken_so_far` → reset turn detector → start fresh STT segment
+
+### Environment Variables Required (see `.env.example`)
+```bash
+# Core
+DATABASE_URL=postgresql+asyncpg://...
+REDIS_URL=redis://...
+JWT_SECRET=... (32+ chars)
+FRONTEND_URL=http://localhost:3000
+
+# NVIDIA (Required for LLM)
+NVIDIA_API_KEY=nvapi_...
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+
+# Stack B (NVIDIA NIM) - Optional, GPU required
+NGC_API_KEY=...
+RIVA_ASR_GRPC_ENDPOINT=voice-riva-asr:50051
+CHATTERBOX_GRPC_ENDPOINT=voice-chatterbox:50051
+RIVA_ASR_USE_SSL=false
+CHATTERBOX_USE_SSL=false
+RIVA_ASR_FUNCTION_ID= (for NVCF)
+CHATTERBOX_FUNCTION_ID= (for NVCF)
+
+# Stripe (Phase 8)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID_STARTER=price_...
+STRIPE_PRICE_ID_PRO=price_...
+STRIPE_PRICE_ID_ENTERPRISE=price_...
+```
+
+### Phase 4 Completed: Voice Engine Integration ✅ (2026-08-17)
+
+**Completed Tasks:**
+1. **✅ Wired demo server to main API** — `backend/app/main.py` now creates `llm_provider_factory` using the backend's `get_llm_provider` and mounts the demo server as a sub-application at `/demo`
+2. **✅ Added demo routes to main API** — Demo server mounted at `/demo` provides:
+   - `POST /demo/start-call` — Start simulated call, returns session_id and ws_url
+   - `WS /demo/ws/audio/{session_id}` — WebSocket for realtime audio streaming
+   - `POST /demo/end-call/{session_id}` — End call and get transcript
+   - `GET /demo/sessions` — List active sessions
+   - `GET /demo` — Embedded HTML test page
+   - `GET /health` — Health check
+3. **✅ Updated nginx config** — Routes `/demo/*` and `/ws/*` proxy to main API (port 8000), eliminating need for separate voice-engine port 8001 exposure
+4. **✅ Fixed AgentPromptConfig** — Added `agent_id` field for proper session tracking
+5. **✅ Verified imports and mounting** — All voice_engine modules import correctly, demo server mounts successfully at `/demo`
+
+**Architecture Change:**
+- Before: Separate voice-engine container on port 8001 with its own demo server
+- After: Demo server mounted as sub-app in main API (port 8000), nginx proxies `/demo/` and `/ws/` to API
+- Benefits: Single entry point, shared LLM provider factory, simpler deployment, unified auth
+
+**Voice Engine Components Verified:**
+| Component | Stack A (Local) | Stack B (NVIDIA NIM) | Status |
+|-----------|-----------------|---------------------|--------|
+| STT | faster-whisper | Riva ASR (gRPC) | ✅ Interface implemented |
+| VAD/Turn Detection | Silero VAD (ONNX) + semantic endpointing | Riva VAD (via ASR) | ✅ Interface implemented |
+| TTS | Kokoro-82M / Piper | Chatterbox TTS (gRPC) | ✅ Interface implemented |
+| Pipeline | Full-duplex with barge-in | Same pipeline, diff engines | ✅ Implemented |
+| LLM | NVIDIA Integrate (stepfun-ai/step-3.7-flash) | Same | ✅ Single provider |
+
+**Docker Compose Notes:**
+- `voice-engine` container still runs for health checks and component verification
+- Demo server no longer needs separate port exposure
+- Stack B (NIM) services: `voice-riva-asr`, `voice-chatterbox` (require GPU + NGC_API_KEY)
+- `voice_models` volume for Kokoro/Piper model files
+
+### Phase 11 Extended: WebSocket Endpoints for External Dialers ✅ (2026-08-17)
+
+**New Feature: Agent WebSocket API for External Dialer Integrations**
+
+This enables external telephony systems (Twilio, SIP providers, custom dialers) to connect directly to an agent's voice pipeline via WebSocket for real-time audio streaming with full-duplex barge-in support.
+
+**Backend Endpoints Added** (`backend/app/api/routers/api_keys.py`):
+- `GET /api/agents/{id}/websocket-urls` — Returns local (LAN) and internet (AWS) WebSocket URLs with API key authentication
+- `GET /api/agents/{id}/websocket-test-token` — Generates 1-hour JWT test token for quick testing without exposing API key
+
+**Voice Engine WebSocket** (`voice_engine/demo_server.py`):
+- `WS /ws/agent/{agent_id}?api_key=...` — Authenticated agent WebSocket endpoint
+- `WS /ws/agent/{agent_id}?token=...` — Test token authenticated WebSocket endpoint
+
+**Protocol:**
+- Client sends: binary audio frames (int16, 16kHz, mono, 20ms frames)
+- Server sends: binary audio frames (int16, 16kHz, mono)
+- Control messages (JSON text frames): `config`, `transcript`, `state`, `end`, `error`
+- **Common endpoint for all agents**: `/ws?api_key=...` or `/ws?token=...`
+- **For API key auth**: First message must be `config` with `agent_id` field
+- **For test token**: `agent_id` is in token, config message optional
+
+**Nginx Configuration Updated** (both local and production):
+- Added `/ws/` location (common endpoint) with WebSocket upgrade headers and long timeouts
+
+**Frontend UI Updated** (`frontend/src/pages/AgentDetail.tsx`):
+- New "WebSocket Endpoints" section in API & Webhook tab
+- Shows common local LAN URL (`wss://ominivoice.local/ws?api_key=...`)
+- Shows common internet/AWS URL placeholder (`wss://api.ominivoice.com/ws?api_key=...`)
+- One-click "Generate & Copy Test Token" button
+- Connection examples in JavaScript and Python
+- Copy-to-clipboard for all URLs
+
+**Documentation Updated:**
+- `docs/ARCHITECTURE.md` — Added Agent WebSocket endpoints to API summary
+- `docs/DEPLOY.md` — Added WebSocket verification steps
+- `docs/QUEUE_HANDOFF.md` — Added Method 2: WebSocket Audio Streaming with full protocol docs and Python integration example
+- `LAUNCH_CHECKLIST.md` — Added Test 8-9 for WebSocket endpoints validation
+
+### Phase 6 Completed: Frontend Shell + All Tabs ✅ (2026-08-17)
+
+**Completed Pages:**
+1. **Dashboard** (`/dashboard`) — Agent cards with create modal (name + direction), status badges, completeness %, last updated
+2. **AgentDetail** (`/agents/:id`) — 4 tabs:
+   - **Configure**: All 14 prompt fields per direction with AI rewrite button, shared config grid
+   - **Test**: WebRTC call UI with live transcript, audio level meter, pipeline state, call summary
+   - **API & Webhook**: Key generation/regen/revoke, masked key display, webhook URL, usage stats, curl examples
+   - **Prompt History**: Version history per field with old/new diff view
+3. **Settings** (`/settings`) — 4 tabs: Profile (email), Security (password change, sign out all), Billing (placeholder), Notifications (checkboxes)
+4. **About/Dev** (`/about-dev`) — Product description, Swagger UI links, open-source component table with licenses, support contacts, changelog
+5. **Account** (`/account`) — Current plan card with usage progress bars, plan comparison table with feature matrix, billing portal button, invoice history placeholder
+
+**Navigation:** Top-level nav: **Dashboard | Settings | About/Dev | Account**
+
+**Technical:** React 18 + Vite + TypeScript + Tailwind, React Router v6, Zustand stores, Axios with JWT refresh interceptor, Heroicons, react-hot-toast
+
+### Phase 8 Completed (Backend): Billing System ✅ (2026-08-17)
+
+**New Router:** `backend/app/api/routers/billing.py` with endpoints:
+- `POST /billing/checkout-session` — Create Stripe Checkout session (price_id, success_url, cancel_url)
+- `POST /billing/portal-session` — Create Stripe Customer Portal session
+- `GET /billing/usage` — Usage statistics (agents, minutes, queue rows with plan limits)
+- `POST /billing/webhook` — Stripe webhook handler (checkout.session.completed, customer.subscription.created/updated/deleted)
+
+**Features:**
+- Plan limits: Free (3 agents, 100 min, 0 queue), Starter (10 agents, 1000 min, 1000 queue), Pro (unlimited agents, 10000 min, unlimited queue), Enterprise (unlimited all)
+- Auto-syncs subscription from Stripe events to local `Subscription` table and `User.plan`
+- Creates Stripe customer on first checkout if needed
+- Returns proper 503 if Stripe not configured (test mode)
+
+**Frontend Account Page:**
+- Current plan card with usage progress bars (color-coded: green/yellow/red)
+- Plan comparison table with checkmarks for features
+- Upgrade buttons per plan (disabled for current/enterprise)
+- "Manage Billing" button → Stripe portal
+- Invoice history placeholder
+
+### Phase 7 Completed: Cold-Call Queue ✅ (2026-08-17)
+
+**Backend Router:** `backend/app/api/routers/queue.py` with endpoints:
+- `POST /agents/{id}/cold-call-queue/import` — CSV upload or JSON array import with phone validation + dedupe
+- `GET /agents/{id}/cold-call-queue` — Paginated, filterable, sortable list
+- `GET /agents/{id}/cold-call-queue/stats` — Status distribution counts
+- `PATCH /agents/{id}/cold-call-queue/{entry_id}` — Update entry fields
+- `POST /agents/{id}/cold-call-queue/retry-failed` — Retry failed entries (Celery task)
+- `DELETE /agents/{id}/cold-call-queue/{entry_id}` — Delete pending/failed entries
+
+**Celery Task:** `backend/app/tasks/queue_tasks.py`
+- `process_cold_call_queue` — Runs every 5 minutes, processes pending entries up to `daily_call_cap`, creates `CallLog` stubs with `QUEUED_FOR_EXTERNAL_DIALER` status for external dialer pickup
+- `retry_failed_queue_entries` — Manual retry trigger
+
+**Frontend:** `frontend/src/components/QueueTab.tsx` — New "Cold Call Queue" tab in AgentDetail:
+- Status cards (Total, Pending, Queued, Completed, Failed)
+- Import modal with CSV template download
+- Sortable, filterable table with inline status editing
+- Payload display for extra CSV columns
+- Delete pending/failed entries
+- Retry failed button
+
+**Features:**
+- Phone validation via `phonenumbers` lib (E.164 formatting)
+- Dedupe on `(agent_id, phone_number)`
+- Daily call cap enforcement
+- Webhook handoff contract documented for external dialer integration
+
+### Phase 9 Completed: Tests, Observability, Deploy, Security ✅ (2026-08-17)
+
+**Integration Tests** (`backend/tests/`):
+- `test_auth.py` — Register, login, refresh, logout, tenant isolation (user A cannot access user B's agents)
+- `test_agents.py` — Agent CRUD, prompt updates, completeness, version history, AI rewrite, filters, pagination
+- `test_api_keys.py` — Key generation, regen, revoke, masked display, webhook URL, rate limiting
+- `test_queue.py` — CSV/JSON import, dedupe, phone validation, listing, filtering, stats, updates, retry, delete
+- `conftest.py` — Pytest fixtures: test DB, async client, auth headers, test users/agents
+
+**Structured Logging** (`backend/app/core/logging.py`):
+- JSON-structured logs via `structlog`
+- Request logging (method, path, status, duration, user_id)
+- Call event logging (agent_id, call_id, event type)
+- Agent event logging (create, update, delete)
+- Security event logging (login, auth failures, IP tracking)
+- Performance logging (operation, duration_ms)
+
+**Prometheus Metrics** (`backend/app/core/metrics.py`):
+- HTTP: request count, duration histogram, status codes
+- Auth: login attempts, token refreshes
+- Agent: creations, updates, deletions by direction
+- API Keys: generations, revocations
+- Calls: active sessions, duration, interruptions, STT/TTS/LLM latency
+- Queue: entries created/processed, daily cap hits
+- Billing: Stripe checkout, webhook events
+- DB: query duration, active connections
+- Redis: operations, latency
+- Celery: task count, duration, queue length
+- `/metrics` endpoint for Prometheus scraping
+
+**Production Deployment** (`infra/`):
+- `docker-compose.prod.yml` — Gunicorn+Uvicorn workers, Redis password, resource limits, healthchecks
+- `nginx/nginx.prod.conf` — SSL/TLS (Let's Encrypt via Certbot), rate limiting zones, security headers, HSTS, CSP
+- `docs/DEPLOY.md` — One-page runbook: server setup, secrets, model files, deploy, SSL, monitoring, backup/restore, troubleshooting
+
+**Security Hardening** (`backend/app/core/security.py`):
+- API keys: `ov_live_<32 chars>`, SHA-256 hashed, shown once
+- JWT: 30min access + 7d refresh rotation, HttpOnly cookies
+- Rate limits: auth (5/min), API (60/min), webhook (60/min) via Redis
+- CSV validation: 5MB size cap, MIME type check
+- CORS locked to `FRONTEND_URL`
+- Security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options
+- Stripe webhook signature verification
+- Plan gating: 402 PAYMENT_REQUIRED with `X-Upgrade-Required` header
+
+**Test Coverage Targets** (critical paths only):
+- Auth lifecycle: register → login → refresh → logout → tenant isolation
+- Agent lifecycle: create → configure → rewrite-prompt → api-key → simulated call → call log
+- API key webhook auth: valid/invalid/revoked keys
+- Queue: CSV import → dedupe → process → external dialer handoff
+- Stripe webhook: checkout.completed → subscription sync → plan gating
+
+---
+
+## Suggested build order (checklist)
+
+- [x] **Phase 0** — repo, docker-compose skeleton, README, MIT/Apache-2.0 license
+- [x] **Phase 1** — auth + multi-tenant models (User, Agent, ApiKey, CallLog, ColdCallQueueEntry, Subscription, RefreshToken, AgentPromptVersion), JWT access+refresh, bcrypt, rate limiting
+- [x] **Phase 2** — agent CRUD, 14 prompt fields per direction (outbound: system, opening, objective, objection, voicemail, closing, escalation; inbound: system, greeting, qualification, knowledge, fallback, handoff), shared config (stack A/B, engines, sensitivity, duration), prompt version history, completeness endpoint, **AI rewrite endpoint** (POST /agents/{id}/rewrite-prompt)
+- [x] **Phase 3** — API key generation (ov_live_<32 chars>, SHA-256 hash, shown once), deterministic webhook URL, key regen/revoke, usage stats, masked key display
+- [x] **Phase 4** — voice engine (STT/VAD/LLM/TTS/full-duplex pipeline with barge-in)
+- [x] **Phase 5** — simulated test-call page (FastRTC/WebRTC)
+- [x] **Phase 6** — frontend shell + all tabs (Dashboard, Configure, Test, API, Versions, Settings, About/Dev, Account)
+- [x] **Phase 7** — cold-call queue + CSV/API import + Celery worker + external dialer webhook handoff
+- [x] **Phase 8** — billing (Stripe Checkout, portal, webhooks, usage stats, plan gating, Account tab) — **backend implemented**
+- [x] **Phase 9** — tests, observability, deploy, security
+- [x] **Phase 10** — production hardening: email, Call Logs, Stripe Elements, CI/CD, migrations, secrets, logging, backup, load testing, admin, RBAC
+- [x] **Phase 11** — local launch validation: checklist, local docker-compose, docs, accessibility/i18n

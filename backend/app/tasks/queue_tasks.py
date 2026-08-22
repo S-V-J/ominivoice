@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.tasks.queue_tasks.process_cold_call_queue")
-async def process_cold_call_queue() -> dict:
+def process_cold_call_queue() -> dict:
     """
     Process pending cold call queue entries for all agents.
     Runs every 5 minutes via Celery beat.
@@ -27,34 +27,39 @@ async def process_cold_call_queue() -> dict:
     Returns:
         Dict with processing statistics
     """
-    async with async_session_maker() as session:
-        # Get all active agents with queue entries
-        result = await session.execute(
-            select(Agent).where(Agent.status.in_(["active", "draft"]))
-        )
-        agents = result.scalars().all()
+    import asyncio
 
-        total_processed = 0
-        total_queued = 0
-        errors = []
+    async def _process():
+        async with async_session_maker() as session:
+            # Get all active agents with queue entries
+            result = await session.execute(
+                select(Agent).where(Agent.status.in_(["active", "draft"]))
+            )
+            agents = result.scalars().all()
 
-        for agent in agents:
-            try:
-                processed, queued = await _process_agent_queue(session, agent)
-                total_processed += processed
-                total_queued += queued
-            except Exception as e:
-                logger.error(f"Error processing queue for agent {agent.id}: {e}")
-                errors.append({"agent_id": str(agent.id), "error": str(e)})
+            total_processed = 0
+            total_queued = 0
+            errors = []
 
-        await session.commit()
+            for agent in agents:
+                try:
+                    processed, queued = await _process_agent_queue(session, agent)
+                    total_processed += processed
+                    total_queued += queued
+                except Exception as e:
+                    logger.error(f"Error processing queue for agent {agent.id}: {e}")
+                    errors.append({"agent_id": str(agent.id), "error": str(e)})
 
-        return {
-            "agents_processed": len(agents),
-            "entries_processed": total_processed,
-            "entries_queued": total_queued,
-            "errors": errors,
-        }
+            await session.commit()
+
+            return {
+                "agents_processed": len(agents),
+                "entries_processed": total_processed,
+                "entries_queued": total_queued,
+                "errors": errors,
+            }
+
+    return asyncio.run(_process())
 
 
 async def _process_agent_queue(session: AsyncSession, agent: Agent) -> tuple[int, int]:
@@ -119,7 +124,7 @@ async def _process_agent_queue(session: AsyncSession, agent: Agent) -> tuple[int
 
 
 @celery_app.task(name="app.tasks.queue_tasks.retry_failed_queue_entries")
-async def retry_failed_queue_entries(agent_id: str, max_retries: int = 3) -> dict:
+def retry_failed_queue_entries(agent_id: str, max_retries: int = 3) -> dict:
     """
     Retry failed queue entries for a specific agent.
     Can be triggered manually or via API.
@@ -131,29 +136,33 @@ async def retry_failed_queue_entries(agent_id: str, max_retries: int = 3) -> dic
     Returns:
         Dict with retry statistics
     """
+    import asyncio
     from uuid import UUID
 
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(ColdCallQueueEntry).where(
-                ColdCallQueueEntry.agent_id == UUID(agent_id),
-                ColdCallQueueEntry.status == QueueEntryStatus.FAILED,
-                ColdCallQueueEntry.attempts < max_retries
+    async def _retry():
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(ColdCallQueueEntry).where(
+                    ColdCallQueueEntry.agent_id == UUID(agent_id),
+                    ColdCallQueueEntry.status == QueueEntryStatus.FAILED,
+                    ColdCallQueueEntry.attempts < max_retries
+                )
             )
-        )
-        entries = result.scalars().all()
+            entries = result.scalars().all()
 
-        retried = 0
-        for entry in entries:
-            entry.status = QueueEntryStatus.PENDING
-            entry.attempts += 1
-            entry.last_attempt_at = datetime.now(timezone.utc)
-            entry.error_message = None
-            retried += 1
+            retried = 0
+            for entry in entries:
+                entry.status = QueueEntryStatus.PENDING
+                entry.attempts += 1
+                entry.last_attempt_at = datetime.now(timezone.utc)
+                entry.error_message = None
+                retried += 1
 
-        await session.commit()
+            await session.commit()
 
-        return {
-            "agent_id": agent_id,
-            "retried": retried,
-        }
+            return {
+                "agent_id": agent_id,
+                "retried": retried,
+            }
+
+    return asyncio.run(_retry())

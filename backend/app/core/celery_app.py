@@ -1,6 +1,7 @@
 """
 Celery application configuration for background tasks.
 """
+import os
 from celery import Celery
 from celery.schedules import crontab
 
@@ -12,11 +13,16 @@ celery_app = Celery(
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
-        "app.tasks.voice_tasks",
         "app.tasks.queue_tasks",
         "app.tasks.billing_tasks",
+        "app.tasks.email_tasks",
+        "app.tasks.auth_tasks",
     ],
 )
+
+# Override broker URL from environment variable at runtime to ensure Docker networking works
+celery_app.conf.broker_url = os.environ.get("CELERY_BROKER_URL", settings.CELERY_BROKER_URL)
+celery_app.conf.result_backend = os.environ.get("CELERY_RESULT_BACKEND", settings.CELERY_RESULT_BACKEND)
 
 # Celery configuration
 celery_app.conf.update(
@@ -44,6 +50,11 @@ celery_app.conf.update(
         "sync-stripe-subscriptions": {
             "task": "app.tasks.billing_tasks.sync_stripe_subscriptions",
             "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
+        },
+        # Email tasks
+        "daily-queue-failure-summary": {
+            "task": "app.tasks.email_tasks.send_daily_queue_failure_summary",
+            "schedule": crontab(hour=9, minute=0),  # Daily at 9 AM
         },
     },
 )
