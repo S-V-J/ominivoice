@@ -333,9 +333,7 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Use explicit type narrowing with type predicate
-                const upgradePlans: readonly UpgradePlanTier[] = ['starter', 'pro', 'enterprise'];
-                const isCurrentPlan = (upgradePlans as readonly string[]).includes(currentPlan) && currentPlan === plan;
+                const isCurrentPlan = ['starter', 'pro', 'enterprise'].includes(currentPlan) && currentPlan === plan;
                 return (
                   <button
                     key={plan}
