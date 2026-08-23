@@ -338,8 +338,11 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Simple string comparison - TypeScript can understand this
-                const isCurrentPlan = ['starter', 'pro', 'enterprise'].includes(currentPlan) && currentPlan === plan;
+                // Use type guard to properly narrow the type
+                const isUpgradePlan = (plan: PlanTier): plan is UpgradePlanTier =>
+                  ['starter', 'pro', 'enterprise'].includes(plan);
+                const isUpgrade = isUpgradePlan(currentPlan);
+                const isCurrentPlan = isUpgrade && currentPlan === plan;
                 return (
                   <button
                     key={plan}
