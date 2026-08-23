@@ -25,7 +25,8 @@ jobs:
           POSTGRES_DB: ominivoice_test
           POSTGRES_USER: ominivoice
           POSTGRES_PASSWORD: testpass
-        ports: 5432:5432
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U ominivoice -d ominivoice_test"
           --health-interval 10s
@@ -33,7 +34,8 @@ jobs:
           --health-retries 5
       redis:
         image: redis:7-alpine
-        ports: 6379:6379
+        ports:
+          - 6379:6379
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
