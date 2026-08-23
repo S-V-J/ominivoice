@@ -1,31 +1,73 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { useDemoCall } from '../hooks/useDemoCall';
 import { api } from '../services/api';
 import toast from 'react-hot-toast';
+import type { Agent, AgentDirection, PlanTier, UpgradePlanTier, UsageStats } from '../types';
+import QueueTab from '../components/QueueTab';
+import CallLogsTab from '../components/CallLogsTab';
 import {
+  ArrowLeftIcon,
+  TrashIcon,
+  MicrophoneIcon,
+  PhoneArrowUpRightIcon,
+  PhoneArrowDownLeftIcon,
+  Cog6ToothIcon,
+  DocumentTextIcon,
+  PlayIcon,
+  StopIcon,
+  XMarkIcon,
+  ListBulletIcon,
+  PhoneIcon,
+  KeyIcon,
+  ClipboardDocumentIcon,
   CreditCardIcon,
-  CurrencyDollarIcon,
   CalendarIcon,
+  CurrencyDollarIcon,
   DocumentTextIcon,
 } from '@heroicons/react/24/outline';
-import StripeCheckout from '../components/StripeCheckout';
+import PromptVersionsTab from '../components/PromptVersionsTab';
 
-type PlanTier = 'free' | 'starter' | 'pro' | 'enterprise';
-type UpgradePlanTier = Exclude<PlanTier, 'free'>;
+const PROMPT_FIELDS: Record<AgentDirection, { key: keyof Agent; label: string; description: string }[]> = {
+  outbound: [
+    { key: 'system_prompt', label: 'System Prompt (Persona)', description: 'Persona, tone, do\'s/don\'ts for the agent' },
+    { key: 'opening_line', label: 'Opening Line', description: 'First thing said when the callee picks up' },
+    { key: 'objective_prompt', label: 'Objective', description: 'What the call is trying to achieve (book meeting, confirm order, etc.)' },
+    { key: 'objection_handling_prompt', label: 'Objection Handling', description: 'How to respond to pushback / "not interested"' },
+    { key: 'voicemail_prompt', label: 'Voicemail Message', description: 'What to say if voicemail/no-answer is detected' },
+    { key: 'closing_prompt', label: 'Closing', description: 'How to end the call / next steps' },
+    { key: 'escalation_rule', label: 'Escalation Rule', description: 'When to say "let me transfer you to a human"' },
+  ],
+  inbound: [
+    { key: 'system_prompt', label: 'System Prompt (Persona)', description: 'Persona, tone, do\'s/don\'ts for the agent' },
+    { key: 'greeting_prompt', label: 'Greeting', description: 'First thing said when a call is answered' },
+    { key: 'qualification_prompt', label: 'Qualification', description: 'Questions to ask to route/understand caller intent' },
+    { key: 'knowledge_prompt', label: 'Knowledge Base', description: 'FAQ / product info the agent should ground answers in' },
+    { key: 'fallback_prompt', label: 'Fallback', description: 'What to say when the agent doesn\'t know the answer' },
+    { key: 'handoff_prompt', label: 'Handoff', description: 'How to hand off to a human/ticket' },
+  ],
+};
 
-interface UsageStats {
-  plan: PlanTier;
-  period_start: string;
-  period_end: string;
-  agents_used: number;
-  agents_limit: number | null;
-  minutes_used: number;
-  minutes_limit: number | null;
-  queue_rows_used: number;
-  queue_rows_limit: number | null;
-}
+const SHARED_FIELDS: { key: keyof Agent; label: string; type: 'text' | 'select' | 'number'; options?: string[] }[] = [
+  { key: 'voice_stack', label: 'Voice Technology Stack', type: 'select', options: ['stack_a', 'stack_b'] },
+  { key: 'interruption_sensitivity', label: 'Interruption Sensitivity', type: 'select', options: ['low', 'medium', 'high'] },
+  { key: 'max_call_duration_s', label: 'Max Call Duration (seconds)', type: 'number' },
+  { key: 'silence_timeout_s', label: 'Silence Timeout (seconds)', type: 'number' },
+  { key: 'language', label: 'Language', type: 'text' },
+  // Stack A (Local) engines
+  { key: 'stt_engine', label: 'STT Engine (Stack A)', type: 'select', options: ['faster-whisper'] },
+  { key: 'tts_engine', label: 'TTS Engine (Stack A)', type: 'select', options: ['kokoro', 'piper'] },
+  { key: 'tts_voice', label: 'TTS Voice (Stack A)', type: 'text' },
+  // Stack B (NVIDIA NIM) engines
+  { key: 'chatterbox_voice', label: 'Chatterbox Voice (Stack B)', type: 'text' },
+  { key: 'chatterbox_emotion_exaggeration', label: 'Chatterbox Emotion (0-1)', type: 'text' },
+  { key: 'riva_asr_language', label: 'Riva ASR Language (Stack B)', type: 'text' },
+  { key: 'riva_vad_threshold', label: 'Riva VAD Threshold (0-1)', type: 'text' },
+  { key: 'llm_provider', label: 'LLM Provider', type: 'select', options: ['nvidia_integrate'] },
+  { key: 'llm_model', label: 'LLM Model', type: 'text' },
+];
 
-const PLAN_DETAILS: Record<PlanTier, { name: string; price: string; features: string[] }> = {
+const PLAN_DETAILS: Record<string, { name: string; price: string; features: string[] }> = {
   free: {
     name: 'Free',
     price: '$0/month',
@@ -78,17 +120,65 @@ const PLAN_DETAILS: Record<PlanTier, { name: string; price: string; features: st
   },
 };
 
+type PlanTier = 'free' | 'starter' | 'pro' | 'enterprise';
+type UpgradePlanTier = 'starter' | 'pro' | 'enterprise';
+type AgentDirection = 'inbound' | 'outbound';
+type AgentStatus = 'draft' | 'active' | 'paused' | 'archived';
+
+interface UsageStats {
+  plan: string;
+  period_start: string;
+  period_end: string;
+  agents_used: number;
+  agents_limit: number | null;
+  minutes_used: number;
+  minutes_limit: number | null;
+  queue_rows_used: number;
+  queue_rows_limit: number | null;
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  direction: AgentDirection;
+  status: AgentStatus;
+  owner_id: string;
+  voice_stack?: string;
+  system_prompt?: string;
+  opening_line?: string;
+  objective_prompt?: string;
+  objection_handling_prompt?: string;
+  voicemail_prompt?: string;
+  closing_prompt?: string;
+  escalation_rule?: string;
+  greeting_prompt?: string;
+  qualification_prompt?: string;
+  knowledge_prompt?: string;
+  fallback_prompt?: string;
+  handoff_prompt?: string;
+  interruption_sensitivity?: string;
+  max_call_duration_s?: number;
+  silence_timeout_s?: number;
+  language?: string;
+  stt_engine?: string;
+  tts_engine?: string;
+  tts_voice?: string;
+  chatterbox_voice?: string;
+  chatterbox_emotion_exaggeration?: number;
+  riva_asr_language?: string;
+  riva_vad_threshold?: number;
+  llm_provider?: string;
+  llm_model?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function Account() {
   const { user } = useAuthStore();
   const [usage, setUsage] = useState<UsageStats | null>(null);
 
-  const currentPlan = (user?.plan as PlanTier) || 'free';
+  const currentPlan = (user?.plan as string) || 'free';
   const planDetails = PLAN_DETAILS[currentPlan];
-
-  // Type guard to check if a string is an upgrade plan
-  const isUpgradePlan = (plan: string): plan is UpgradePlanTier => {
-    return ['starter', 'pro', 'enterprise'].includes(plan);
-  };
 
   useEffect(() => {
     loadUsage();
@@ -112,9 +202,47 @@ export default function Account() {
     }
   };
 
-  const [showCheckout, setShowCheckout] = useState<PlanTier | null>(null);
+  const [showCheckout, setShowCheckout] = useState<string | null>(null);
 
-  const handleUpgrade = (plan: UpgradePlanTier) => {
+  const handleUpgrade = (plan: string) => {
+    if (plan === 'enterprise') {
+      toast('Contact sales for Enterprise pricing', { icon: 'ℹ️' });
+      return;
+    }
+    setShowCheckout(plan);
+  };
+
+  const handleCheckoutSuccess = () => {
+    setShowCheckout(null);
+    toast.success('Subscription activated!');
+    loadUsage();
+  };
+
+  const handleCheckoutCancel = () => {
+    setShowCheckout(null);
+  };
+
+  const getProgress = (used: number, limit: number | null) => {
+    if (!limit) return 100;
+    return Math.min(100, Math.round((used / limit) * 100));
+  };
+
+  const getProgressColor = (percentage: number) => {
+    if (percentage >= 90) return 'bg-red-500';
+    if (percentage >= 70) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      const data = await api.createPortalSession();
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to open billing portal');
+    }
+  };
+
+  const handleUpgrade = (plan: string) => {
     if (plan === 'enterprise') {
       toast('Contact sales for Enterprise pricing', { icon: 'ℹ️' });
       return;
@@ -213,7 +341,7 @@ export default function Account() {
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className={`${getProgressColor(getProgress(usage?.queue_rows_used ?? 0, usage?.queue_rows_limit ?? (currentPlan === 'free' ? 0 : 10000)))} h-2 rounded-full transition-all`}
-                  style={{ width: `${usage?.queue_rows_limit ? getProgress(usage?.queue_rows_used ?? 0, usage?.queue_rows_limit) : 0}%` }}
+                  style={{ width: `${getProgress(usage?.queue_rows_used ?? 0, usage?.queue_rows_limit ?? (currentPlan === 'free' ? 0 : 10000))}%` }}
                 ></div>
               </div>
             </div>
@@ -243,7 +371,7 @@ export default function Account() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feature</th>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
+                  {(['free', 'starter', 'pro', 'enterprise'] as const).map((plan) => (
                     <th key={plan} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className={`font-semibold text-gray-900 ${currentPlan === plan ? 'text-primary-600' : ''}`}>{PLAN_DETAILS[plan].name}</div>
                       <div className="text-sm text-gray-500">{PLAN_DETAILS[plan].price}</div>
@@ -252,73 +380,20 @@ export default function Account() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {/* Features rows */}
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">Voice Agents</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center text-sm text-gray-600">
-                      {plan === 'free' ? '3' : plan === 'starter' ? '10' : 'Unlimited'}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">Test Call Minutes/Month</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center text-sm text-gray-600">
-                      {plan === 'free' ? '100' : plan === 'starter' ? '1,000' : plan === 'pro' ? '10,000' : 'Unlimited'}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">AI Prompt Rewriting</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center">
-                      {plan !== 'free' ? (
-                        <svg className="w-5 h-5 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+                {PLAN_DETAILS.free.features.map((feature, idx) => (
+                  <tr key={idx}>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{feature}</td>
+                    {(['free', 'starter', 'pro', 'enterprise'] as const).map((plan) => (
+                      <td key={plan} className="px-4 py-3 text-center">
+                        {PLAN_DETAILS[plan].features.includes(feature) ? (
+                          <svg className="w-5 h-5 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                        ) : (
+                          <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+                        )}
                       )}
                     </td>
                   ))}
-                </tr>
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">Cold-Call Queue</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center">
-                      {['pro', 'enterprise'].includes(plan) ? (
-                        <svg className="w-5 h-5 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">Prompt Version History</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center">
-                      {plan !== 'free' ? (
-                        <svg className="w-5 h-5 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">Priority Support</td>
-                  {(['free', 'starter', 'pro', 'enterprise'] as PlanTier[]).map((plan) => (
-                    <td key={plan} className="px-4 py-3 text-center">
-                      {['pro', 'enterprise'].includes(plan) ? (
-                        <svg className="w-5 h-5 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                      ) : plan === 'starter' ? (
-                        <svg className="w-5 h-5 text-yellow-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -333,14 +408,9 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Use a type guard to properly narrow the type
-                const isUpgradePlan = (plan: string): plan is UpgradePlanTier =>
-                  ['starter', 'pro', 'enterprise'].includes(plan);
-                // Use a type guard function that TypeScript can properly narrow
-                const isUpgradePlanType = (plan: PlanTier): plan is UpgradePlanTier =>
-                  ['starter', 'pro', 'enterprise'].includes(plan);
-                // Cast currentPlan to string first, then narrow with type guard
-                const isUpgrade = isUpgradePlan(currentPlan as string);
+                // Use explicit type narrowing with a const array that TypeScript understands
+                const upgradePlans = ['starter', 'pro', 'enterprise'] as const;
+                const isUpgrade = upgradePlans.includes(currentPlan);
                 const isCurrentPlan = isUpgrade && currentPlan === plan;
                 return (
                   <button
@@ -351,7 +421,7 @@ export default function Account() {
                       isCurrentPlan
                         ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
                         : plan === 'enterprise'
-                        ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                        ? 'bg-gray-100 text-gray-500 cursor-not_allowed'
                         : plan === 'pro'
                         ? 'bg-primary-600 text-white hover:bg-primary-700'
                         : 'bg-gray-900 text-white hover:bg-gray-800'
@@ -418,3 +488,79 @@ export default function Account() {
     </div>
   );
 }
+
+function StripeCheckout({ plan, onSuccess, onCancel }: { plan: string; onSuccess: () => void; onCancel: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.createCheckoutSession(plan);
+      if (response.url) {
+        window.location.href = response.url;
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to create checkout session');
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-center text-gray-600">Redirecting to Stripe Checkout...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto">
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">Subscribe to {PLAN_DETAILS[plan].name}</h2>
+          <p className="text-sm text-gray-500 mt-1">{PLAN_DETAILS[plan].price}</p>
+        </div>
+        <div className="card-body">
+          <ul className="space-y-2 text-sm text-gray-600">
+            {PLAN_DETAILS[plan as keyof typeof PLAN_DETAILS].features.map((feature) => (
+              <li key={feature} className="flex items-center">
+                <svg className="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                <span>{feature}</span>
+              </li>
+            ))}
+          </ul>
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          <div className="mt-6 flex space-x-3">
+            <button
+              onClick={handleCheckout}
+              disabled={loading}
+              className="btn-primary flex-1"
+            >
+              {loading ? 'Processing...' : `Subscribe to ${PLAN_DETAILS[plan].name}`}
+            </button>
+            <button
+              onClick={onCancel}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const planDetails = PLAN_DETAILS[plan as keyof typeof PLAN_DETAILS] || PLAN_DETAILS.starter;
+  return <StripeCheckout plan={plan} onSuccess={onSuccess} onCancel={onCancel} />;
+}
+
+export default Account;
