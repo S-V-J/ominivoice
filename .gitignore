@@ -59,4 +59,7 @@ docker-compose.override.yml
 # Secrets
 *.pem
 *.key
-*.crtinfra/voice_models/
+*.crt
+
+# Model files (large binary files - downloaded at build time)
+infra/voice_models/
