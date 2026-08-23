@@ -90,6 +90,11 @@ export default function Account() {
     return ['starter', 'pro', 'enterprise'].includes(plan);
   };
 
+  // Type guard to check if a string is an upgrade plan
+  const isUpgradePlanString = (plan: string): plan is UpgradePlanTier => {
+    return ['starter', 'pro', 'enterprise'].includes(plan);
+  };
+
   useEffect(() => {
     loadUsage();
   }, []);
@@ -333,7 +338,11 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                const isCurrentPlan = ['starter', 'pro', 'enterprise'].includes(currentPlan) && currentPlan === plan;
+                // Use a type guard function to properly narrow the type
+                const isUpgradePlan = (plan: string): plan is UpgradePlanTier =>
+                  ['starter', 'pro', 'enterprise'].includes(plan);
+                const isUpgrade = isUpgradePlan(currentPlan);
+                const isCurrentPlan = isUpgrade && currentPlan === plan;
                 return (
                   <button
                     key={plan}
