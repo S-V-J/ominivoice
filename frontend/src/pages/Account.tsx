@@ -85,13 +85,8 @@ export default function Account() {
   const currentPlan = (user?.plan as PlanTier) || 'free';
   const planDetails = PLAN_DETAILS[currentPlan];
 
-  // Type guard to check if currentPlan is an upgrade plan
-  const isUpgradePlan = (plan: PlanTier): plan is UpgradePlanTier => {
-    return ['starter', 'pro', 'enterprise'].includes(plan);
-  };
-
   // Type guard to check if a string is an upgrade plan
-  const isUpgradePlanString = (plan: string): plan is UpgradePlanTier => {
+  const isUpgradePlan = (plan: string): plan is UpgradePlanTier => {
     return ['starter', 'pro', 'enterprise'].includes(plan);
   };
 
@@ -338,10 +333,11 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Use type guard to properly narrow the type
-                const isUpgradePlan = (plan: PlanTier): plan is UpgradePlanTier =>
+                // Type-safe comparison using a type guard function
+                const isUpgradePlan = (plan: string): plan is UpgradePlanTier =>
                   ['starter', 'pro', 'enterprise'].includes(plan);
-                const isUpgrade = isUpgradePlan(currentPlan);
+                // Cast currentPlan to string first, then narrow
+                const isUpgrade = ['starter', 'pro', 'enterprise'].includes(currentPlan);
                 const isCurrentPlan = isUpgrade && currentPlan === plan;
                 return (
                   <button
