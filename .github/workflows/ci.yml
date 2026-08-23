@@ -68,8 +68,8 @@ jobs:
 
       - name: Run Tests
         env:
-          TEST_DATABASE_URL: postgresql+asyncpg://ominivoice:testpass@localhost:5432/ominivoice_test
-          REDIS_URL: redis://localhost:6379/0
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:testpass@postgres:5432/ominivoice_test
+          REDIS_URL: redis://redis:6379/0
           JWT_SECRET: test-secret-key-for-testing-min-32-chars
           STRIPE_SECRET_KEY: sk_test_fake
           STRIPE_WEBHOOK_SECRET: whsec_fake
@@ -78,7 +78,7 @@ jobs:
           ENVIRONMENT: test
         run: |
           cd backend
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
