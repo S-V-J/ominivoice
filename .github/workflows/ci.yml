@@ -67,6 +67,7 @@ jobs:
           mypy app/ || true
 
       - name: Run Tests
+        if: hashFiles('backend/tests/**') != ''
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:testpass@postgres:5432/ominivoice_test
           REDIS_URL: redis://redis:6379/0
@@ -81,6 +82,7 @@ jobs:
           pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
 
       - name: Upload coverage
+        if: hashFiles('backend/tests/**') != ''
         uses: codecov/codecov-action@v4
         with:
           files: ./backend/coverage.xml

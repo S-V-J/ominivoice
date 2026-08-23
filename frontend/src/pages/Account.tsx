@@ -3,9 +3,9 @@ import { useAuthStore } from '../store/authStore';
 import { useDemoCall } from '../hooks/useDemoCall';
 import { api } from '../services/api';
 import toast from 'react-hot-toast';
-import type { Agent, AgentDirection, PlanTier, UpgradePlanTier, UsageStats } from '../types';
 import QueueTab from '../components/QueueTab';
 import CallLogsTab from '../components/CallLogsTab';
+import PromptVersionsTab from '../components/PromptVersionsTab';
 import {
   ArrowLeftIcon,
   TrashIcon,
@@ -24,11 +24,9 @@ import {
   CreditCardIcon,
   CalendarIcon,
   CurrencyDollarIcon,
-  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
-import PromptVersionsTab from '../components/PromptVersionsTab';
 
-const PROMPT_FIELDS: Record<AgentDirection, { key: keyof Agent; label: string; description: string }[]> = {
+const PROMPT_FIELDS: Record<string, { key: string; label: string; description: string }[]> = {
   outbound: [
     { key: 'system_prompt', label: 'System Prompt (Persona)', description: 'Persona, tone, do\'s/don\'ts for the agent' },
     { key: 'opening_line', label: 'Opening Line', description: 'First thing said when the callee picks up' },
@@ -48,7 +46,7 @@ const PROMPT_FIELDS: Record<AgentDirection, { key: keyof Agent; label: string; d
   ],
 };
 
-const SHARED_FIELDS: { key: keyof Agent; label: string; type: 'text' | 'select' | 'number'; options?: string[] }[] = [
+const SHARED_FIELDS: { key: string; label: string; type: 'text' | 'select' | 'number'; options?: string[] }[] = [
   { key: 'voice_stack', label: 'Voice Technology Stack', type: 'select', options: ['stack_a', 'stack_b'] },
   { key: 'interruption_sensitivity', label: 'Interruption Sensitivity', type: 'select', options: ['low', 'medium', 'high'] },
   { key: 'max_call_duration_s', label: 'Max Call Duration (seconds)', type: 'number' },
@@ -125,6 +123,8 @@ type UpgradePlanTier = 'starter' | 'pro' | 'enterprise';
 type AgentDirection = 'inbound' | 'outbound';
 type AgentStatus = 'draft' | 'active' | 'paused' | 'archived';
 
+const UPGRADE_PLANS: UpgradePlanTier[] = ['starter', 'pro', 'enterprise'];
+
 interface UsageStats {
   plan: string;
   period_start: string;
@@ -173,11 +173,11 @@ interface Agent {
   updated_at: string;
 }
 
-export default function Account() {
+function Account() {
   const { user } = useAuthStore();
   const [usage, setUsage] = useState<UsageStats | null>(null);
 
-  const currentPlan = (user?.plan as string) || 'free';
+  const currentPlan: PlanTier = (user?.plan as PlanTier) || 'free';
   const planDetails = PLAN_DETAILS[currentPlan];
 
   useEffect(() => {
@@ -203,44 +203,6 @@ export default function Account() {
   };
 
   const [showCheckout, setShowCheckout] = useState<string | null>(null);
-
-  const handleUpgrade = (plan: string) => {
-    if (plan === 'enterprise') {
-      toast('Contact sales for Enterprise pricing', { icon: 'ℹ️' });
-      return;
-    }
-    setShowCheckout(plan);
-  };
-
-  const handleCheckoutSuccess = () => {
-    setShowCheckout(null);
-    toast.success('Subscription activated!');
-    loadUsage();
-  };
-
-  const handleCheckoutCancel = () => {
-    setShowCheckout(null);
-  };
-
-  const getProgress = (used: number, limit: number | null) => {
-    if (!limit) return 100;
-    return Math.min(100, Math.round((used / limit) * 100));
-  };
-
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 90) return 'bg-red-500';
-    if (percentage >= 70) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  const handleManageBilling = async () => {
-    try {
-      const data = await api.createPortalSession();
-      window.location.href = data.url;
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to open billing portal');
-    }
-  };
 
   const handleUpgrade = (plan: string) => {
     if (plan === 'enterprise') {
@@ -390,9 +352,9 @@ export default function Account() {
                         ) : (
                           <svg className="w-5 h-5 text-gray-300 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
                         )}
-                      )}
-                    </td>
-                  ))}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -407,12 +369,8 @@ export default function Account() {
             />
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
-              {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Use a type guard to properly narrow the type
-                const isUpgradePlan = (plan: string): plan is UpgradePlanTier =>
-                  ['starter', 'pro', 'enterprise'].includes(plan);
-                const isUpgrade = (['starter', 'pro', 'enterprise'] as const).includes(currentPlan);
-                const isCurrentPlan = (currentPlan as UpgradePlanTier) === plan;
+              {UPGRADE_PLANS.map((plan) => {
+                const isCurrentPlan = currentPlan === plan;
                 return (
                   <button
                     key={plan}
@@ -422,13 +380,13 @@ export default function Account() {
                       isCurrentPlan
                         ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
                         : plan === 'enterprise'
-                        ? 'bg-gray-100 text-gray-500 cursor-not_allowed'
+                        ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
                         : plan === 'pro'
                         ? 'bg-primary-600 text-white hover:bg-primary-700'
                         : 'bg-gray-900 text-white hover:bg-gray-800'
                     }`}
                   >
-                    {plan === currentPlan ? 'Current Plan' : plan === 'enterprise' ? 'Contact Sales' : `Upgrade to ${PLAN_DETAILS[plan].name}`}
+                    {isCurrentPlan ? 'Current Plan' : plan === 'enterprise' ? 'Contact Sales' : `Upgrade to ${PLAN_DETAILS[plan].name}`}
                   </button>
                 );
               })}
@@ -557,11 +515,8 @@ function StripeCheckout({ plan, onSuccess, onCancel }: { plan: string; onSuccess
           </div>
         </div>
       </div>
-    );
-  }
-
-  const planDetails = PLAN_DETAILS[plan as keyof typeof PLAN_DETAILS] || PLAN_DETAILS.starter;
-  return <StripeCheckout plan={plan} onSuccess={onSuccess} onCancel={onCancel} />;
+    </div>
+  );
 }
 
 export default Account;

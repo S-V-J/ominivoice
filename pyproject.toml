@@ -26,11 +26,11 @@ ignore = [
     "SIM103", # use return instead of if/else
     "T201",  # print statement (allowed in dev)
 ]
-per-file-ignores = {
-    "tests/*": ["T201", "S101"],
-    "alembic/*": ["T201"],
-    "backend/alembic/*": ["T201"],
-}
+per-file-ignores = [
+    "tests/*: T201,S101",
+    "alembic/*: T201",
+    "backend/alembic/*: T201",
+]
 
 [tool.ruff.format]
 quote-style = "double"
