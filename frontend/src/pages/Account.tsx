@@ -408,10 +408,11 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                // Use explicit type narrowing with a const array that TypeScript understands
-                const upgradePlans = ['starter', 'pro', 'enterprise'] as const;
-                const isUpgrade = upgradePlans.includes(currentPlan);
-                const isCurrentPlan = isUpgrade && currentPlan === plan;
+                // Use a type guard to properly narrow the type
+                const isUpgradePlan = (plan: string): plan is UpgradePlanTier =>
+                  ['starter', 'pro', 'enterprise'].includes(plan);
+                const isUpgrade = (['starter', 'pro', 'enterprise'] as const).includes(currentPlan);
+                const isCurrentPlan = (currentPlan as UpgradePlanTier) === plan;
                 return (
                   <button
                     key={plan}
@@ -427,7 +428,7 @@ export default function Account() {
                         : 'bg-gray-900 text-white hover:bg-gray-800'
                     }`}
                   >
-                    {isCurrentPlan ? 'Current Plan' : plan === 'enterprise' ? 'Contact Sales' : `Upgrade to ${PLAN_DETAILS[plan].name}`}
+                    {plan === currentPlan ? 'Current Plan' : plan === 'enterprise' ? 'Contact Sales' : `Upgrade to ${PLAN_DETAILS[plan].name}`}
                   </button>
                 );
               })}
