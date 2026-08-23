@@ -59,4 +59,4 @@ docker-compose.override.yml
 # Secrets
 *.pem
 *.key
-*.crt
+*.crtinfra/voice_models/
