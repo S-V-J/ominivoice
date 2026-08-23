@@ -328,7 +328,8 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                const isCurrentPlan = currentPlan === plan;
+                const upgradePlans: ReadonlyArray<UpgradePlanTier> = ['starter', 'pro', 'enterprise'];
+                const isCurrentPlan = upgradePlans.includes(currentPlan) && currentPlan === plan;
                 return (
                   <button
                     key={plan}
