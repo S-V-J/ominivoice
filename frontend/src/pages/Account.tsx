@@ -333,7 +333,10 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                const isCurrentPlan = isUpgradePlan(currentPlan) && currentPlan === plan;
+                // Type guard to narrow the type for currentPlan
+                const isUpgrade = (plan: string): plan is UpgradePlanTier =>
+                  ['starter', 'pro', 'enterprise'].includes(plan);
+                const isCurrentPlan = isUpgrade(currentPlan) && currentPlan === plan;
                 return (
                   <button
                     key={plan}
