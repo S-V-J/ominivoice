@@ -85,6 +85,11 @@ export default function Account() {
   const currentPlan = (user?.plan as PlanTier) || 'free';
   const planDetails = PLAN_DETAILS[currentPlan];
 
+  // Type guard to check if currentPlan is an upgrade plan
+  const isUpgradePlan = (plan: PlanTier): plan is UpgradePlanTier => {
+    return ['starter', 'pro', 'enterprise'].includes(plan);
+  };
+
   useEffect(() => {
     loadUsage();
   }, []);
@@ -328,10 +333,7 @@ export default function Account() {
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               {(['starter', 'pro', 'enterprise'] as const).map((plan) => {
-                const isCurrentPlan = ((): boolean => {
-                  const upgradePlans: readonly UpgradePlanTier[] = ['starter', 'pro', 'enterprise'];
-                  return upgradePlans.includes(currentPlan) && currentPlan === plan;
-                })();
+                const isCurrentPlan = isUpgradePlan(currentPlan) && currentPlan === plan;
                 return (
                   <button
                     key={plan}
