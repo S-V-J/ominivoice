@@ -16,9 +16,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies - use official PyPI with extended timeout for slow networks
+# Install Python dependencies - use Aliyun mirror (fast in China/Asia), fallback to official PyPI
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip --default-timeout=7200 && \
+RUN pip install --no-cache-dir --upgrade pip --default-timeout=7200 -i https://mirrors.aliyun.com/pypi/simple/ || \
+    pip install --no-cache-dir --upgrade pip --default-timeout=7200 && \
+    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ || \
     pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
 
 # Copy application code (for development mounting)

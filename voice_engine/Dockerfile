@@ -39,6 +39,7 @@ COPY requirements.txt ./requirements.txt
 
 # Install Python dependencies - use official PyPI with extended timeout for slow networks
 # Install heavy ML packages first with extended timeout
+# torch/torchaudio must come from official PyTorch index (aliyun mirror lacks these versions)
 RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --default-timeout=7200 ctranslate2==4.4.0 && \
     pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
