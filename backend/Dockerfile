@@ -16,10 +16,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies - use official PyPI
+# Install Python dependencies - use official PyPI with extended timeout for slow networks
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip --default-timeout=1800 && \
-    pip install --no-cache-dir --default-timeout=1800 -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip --default-timeout=7200 && \
+    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
 
 # Copy application code (for development mounting)
 COPY . .

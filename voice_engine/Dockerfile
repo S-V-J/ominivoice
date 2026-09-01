@@ -37,11 +37,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first for better layer caching
 COPY requirements.txt ./requirements.txt
 
-# Install Python dependencies - use official PyPI with longer timeouts
+# Install Python dependencies - use official PyPI with extended timeout for slow networks
 # Install heavy ML packages first with extended timeout
-RUN pip install --no-cache-dir --default-timeout=3600 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --default-timeout=3600 ctranslate2==4.4.0 && \
-    pip install --no-cache-dir --default-timeout=1200 -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir --default-timeout=7200 ctranslate2==4.4.0 && \
+    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
@@ -79,9 +79,9 @@ COPY requirements.txt ./requirements.txt
 COPY requirements-gpu.txt ./requirements-gpu.txt
 
 # Install with CUDA support for faster-whisper, ONNX GPU, etc.
-RUN pip install --no-cache-dir --default-timeout=3600 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install --no-cache-dir --default-timeout=3600 ctranslate2==4.4.0 && \
-    pip install --no-cache-dir --default-timeout=1200 -r requirements.txt -r requirements-gpu.txt
+RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install --no-cache-dir --default-timeout=7200 ctranslate2==4.4.0 && \
+    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt -r requirements-gpu.txt
 
 ################################################################################
 # PRODUCTION - CPU-only runtime
