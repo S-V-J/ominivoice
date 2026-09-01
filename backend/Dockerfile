@@ -16,10 +16,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies - use Tsinghua mirror for faster downloads
+# Install Python dependencies - use official PyPI
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip --default-timeout=1800 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install --no-cache-dir --default-timeout=1800 -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir --upgrade pip --default-timeout=1800 && \
+    pip install --no-cache-dir --default-timeout=1800 -r requirements.txt
 
 # Copy application code (for development mounting)
 COPY . .
