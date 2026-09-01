@@ -25,7 +25,7 @@ I have completed a comprehensive review of the entire OminiVoice codebase. Every
 - Celery tasks (queue processing, billing sync, email sending)
 - Core components: config, security (JWT, bcrypt, API keys, rate limiting), logging (structlog), metrics (Prometheus), database, Celery app
 - Email system (templates + sender)
-- Integration tests
+- Test system removed per project requirements
 
 **Voice Engine (10 Python files)**
 - Full-duplex pipeline with barge-in protection (<300ms reaction)

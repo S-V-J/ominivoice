@@ -9,7 +9,17 @@ import {
   TrashIcon,
   ArrowDownTrayIcon,
   ChartBarIcon,
+  CheckIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+} from 'recharts';
 
 const STATUS_BADGES: Record<QueueEntryStatus, string> = {
   pending: 'badge-gray',
@@ -38,6 +48,13 @@ export default function QueueTab({ agent }: { agent: Agent }) {
   const [statusFilter, setStatusFilter] = useState<QueueEntryStatus | 'all'>('all');
   const [sortBy, setSortBy] = useState<'created_at' | 'scheduled_at' | 'contact_name' | 'status'>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Bulk actions
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleEntry, setScheduleEntry] = useState<ColdCallQueueEntry | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
 
   useEffect(() => {
     loadData();
@@ -119,12 +136,101 @@ export default function QueueTab({ agent }: { agent: Agent }) {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedEntries.size} entries?`)) return;
+    try {
+      for (const entryId of selectedEntries) {
+        await api.deleteQueueEntry(agent.id, entryId);
+      }
+      toast.success(`${selectedEntries.size} entries deleted`);
+      setSelectedEntries(new Set());
+      loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to delete');
+    }
+  };
+
+  const handleBulkRetry = async () => {
+    if (!confirm(`Retry ${selectedEntries.size} failed entries?`)) return;
+    try {
+      for (const entryId of selectedEntries) {
+        await api.updateQueueEntry(agent.id, entryId, { status: 'pending' as QueueEntryStatus });
+      }
+      toast.success(`${selectedEntries.size} entries queued for retry`);
+      setSelectedEntries(new Set());
+      loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to retry');
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selected = entries.filter(e => selectedEntries.has(e.id));
+    if (selected.length === 0) return;
+
+    const headers = ['Contact Name', 'Phone Number', 'Status', 'Source', 'Created', 'Payload'];
+    const rows = selected.map(e => [
+      e.contact_name,
+      e.phone_number,
+      e.status,
+      e.source,
+      new Date(e.created_at).toLocaleString(),
+      JSON.stringify(e.payload || {}),
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `queue-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleScheduleClick = (entry: ColdCallQueueEntry) => {
+    setScheduleEntry(entry);
+    setShowScheduleModal(true);
+  };
+
+  const handleScheduleSave = async () => {
+    if (!scheduleEntry || !scheduleDate || !scheduleTime) return;
+    try {
+      const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`).toISOString();
+      await api.updateQueueEntry(agent.id, scheduleEntry.id, { scheduled_at: scheduledAt });
+      toast.success('Call scheduled');
+      setShowScheduleModal(false);
+      setScheduleEntry(null);
+      loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to schedule');
+    }
+  };
+
   const handleSort = (column: 'created_at' | 'scheduled_at' | 'contact_name' | 'status') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(column);
       setSortOrder('asc');
+    }
+  };
+
+  const handleSelectionChange = (entryId: string, checked: boolean) => {
+    const newSelected = new Set(selectedEntries);
+    if (checked) {
+      newSelected.add(entryId);
+    } else {
+      newSelected.delete(entryId);
+    }
+    setSelectedEntries(newSelected);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedEntries(new Set(entries.map(e => e.id)));
+    } else {
+      setSelectedEntries(new Set());
     }
   };
 
@@ -143,6 +249,14 @@ export default function QueueTab({ agent }: { agent: Agent }) {
     if (sortBy !== column) return null;
     return sortOrder === 'asc' ? '↑' : '↓';
   };
+
+  const chartData = stats ? [
+    { name: 'Pending', value: stats.pending, color: '#9CA3AF' },
+    { name: 'Queued', value: stats.queued, color: '#3B82F6' },
+    { name: 'In Progress', value: stats.in_progress, color: '#F59E0B' },
+    { name: 'Completed', value: stats.completed, color: '#10B981' },
+    { name: 'Failed', value: stats.failed, color: '#EF4444' },
+  ].filter(d => d.value > 0) : [];
 
   return (
     <div className="space-y-6">
@@ -175,9 +289,66 @@ export default function QueueTab({ agent }: { agent: Agent }) {
         </div>
       )}
 
+      {/* Status Distribution Chart */}
+      {stats && chartData.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="text-lg font-semibold text-gray-900">Status Distribution</h3>
+          </div>
+          <div className="card-body">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="value"
+                  nameKey="name"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => [value.toString(), 'Entries']} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
+          {/* Bulk Actions */}
+          {selectedEntries.size > 0 && (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">
+                {selectedEntries.size} selected
+              </span>
+              <button onClick={handleExportSelected} className="btn-secondary text-sm flex items-center space-x-1">
+                <ArrowDownTrayIcon className="w-4 h-4" />
+                <span>Export</span>
+              </button>
+              <button onClick={handleBulkRetry} className="btn-secondary text-sm flex items-center space-x-1">
+                <ArrowPathIcon className="w-4 h-4" />
+                <span>Retry</span>
+              </button>
+              <button onClick={handleBulkDelete} className="btn-danger text-sm flex items-center space-x-1">
+                <TrashIcon className="w-4 h-4" />
+                <span>Delete</span>
+              </button>
+              <button onClick={() => setSelectedEntries(new Set())} className="btn-ghost text-sm">
+                Clear
+              </button>
+            </div>
+          )}
+
           {/* Status Filter */}
           <div className="relative">
             <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -227,6 +398,15 @@ export default function QueueTab({ agent }: { agent: Agent }) {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntries.size === entries.length && entries.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                        aria-label="Select all"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <button onClick={() => handleSort('contact_name')} className="flex items-center space-x-1 hover:text-primary-600">
                         Contact <span className="text-xs">{getSortIcon('contact_name')}</span>
@@ -260,6 +440,15 @@ export default function QueueTab({ agent }: { agent: Agent }) {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {entries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedEntries.has(entry.id)}
+                          onChange={(e) => handleSelectionChange(entry.id, e.target.checked)}
+                          className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                          aria-label={`Select ${entry.contact_name}`}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-900">{entry.contact_name}</div>
                         {entry.payload && Object.keys(entry.payload).length > 0 && (
@@ -290,6 +479,17 @@ export default function QueueTab({ agent }: { agent: Agent }) {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end space-x-2">
+                          {entry.status === 'pending' && (
+                            <button
+                              onClick={() => handleScheduleClick(entry)}
+                              className="btn-ghost text-blue-600 hover:bg-blue-50"
+                              title="Schedule Call"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             onClick={() => handleDelete(entry)}
                             disabled={entry.status !== 'pending' && entry.status !== 'failed'}
@@ -350,8 +550,52 @@ export default function QueueTab({ agent }: { agent: Agent }) {
           </div>
         </div>
       )}
-    </div>
-  );
+
+      {/* Schedule Call Modal */}
+      {showScheduleModal && scheduleEntry && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => { setShowScheduleModal(false); setScheduleEntry(null); }}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule Call</h3>
+            <p className="text-gray-600 mb-4">Schedule a call for <strong>{scheduleEntry.contact_name}</strong> ({scheduleEntry.phone_number})</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="label">Date</label>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  className="input"
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">Time</label>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="input"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button onClick={() => { setShowScheduleModal(false); setScheduleEntry(null); }} className="btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleScheduleSave} disabled={!scheduleDate || !scheduleTime} className="btn-primary">
+                  Schedule
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
 }
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {

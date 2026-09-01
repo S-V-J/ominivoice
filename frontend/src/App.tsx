@@ -8,6 +8,7 @@ import AgentDetail from './pages/AgentDetail';
 import Settings from './pages/Settings';
 import AboutDev from './pages/AboutDev';
 import Account from './pages/Account';
+import Admin from './pages/Admin';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/about-dev" element={<AboutDev />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/admin" element={<Admin />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

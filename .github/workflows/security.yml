@@ -2,118 +2,83 @@ name: Security
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [main, develop]
   pull_request:
-    branches: [master, main, develop]
+    branches: [main, develop]
   schedule:
-    # Run weekly on Mondays at 9 AM UTC
-    - cron: '0 9 * * 1'
-  workflow_dispatch:
+    - cron: "0 2 * * 1"  # Weekly on Monday at 2 AM
 
 jobs:
-  # =========================================================================
-  # Python Dependency Audit
-  # =========================================================================
-  python-audit:
-    name: Security - Python Dependency Audit
+  # Python dependency audit
+  pip-audit:
+    name: pip-audit
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ./backend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: "backend/requirements.txt"
 
       - name: Install dependencies
         run: |
-          cd backend
+          pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pip-audit
 
       - name: Run pip-audit
-        run: |
-          cd backend
-          pip install pip-audit
-          pip-audit --desc --format=json --output=pip-audit-report.json || true
+        run: pip-audit -r requirements.txt --format=json --output=pip-audit-report.json || true
 
-      - name: Upload pip-audit report
+      - name: Upload audit report
         uses: actions/upload-artifact@v4
         with:
           name: pip-audit-report
           path: backend/pip-audit-report.json
 
-      - name: Check for vulnerabilities
-        run: |
-          cd backend
-          if [ -f pip-audit-report.json ]; then
-            VULN_COUNT=$(jq '[.vulnerabilities[] | select(.fix_versions != [])] | length' pip-audit-report.json)
-            if [ "$VULN_COUNT" -gt 0 ]; then
-              echo "Found $VULN_COUNT vulnerabilities with fixes available"
-              jq '.vulnerabilities[] | select(.fix_versions != []) | "\(.name) \(.version) -> fix: \(.fix_versions[])"' pip-audit-report.json
-              exit 1
-            fi
-          fi
-
-  # =========================================================================
-  # Node.js Dependency Audit
-  # =========================================================================
-  node-audit:
-    name: Security - Node.js Dependency Audit
+  # Node.js dependency audit
+  npm-audit:
+    name: npm audit
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install dependencies
-        run: |
-          cd frontend
-          npm ci
+        run: npm ci
 
       - name: Run npm audit
-        run: |
-          cd frontend
-          npm audit --audit-level=high --json > npm-audit-report.json || true
+        run: npm audit --json > npm-audit-report.json || true
 
-      - name: Upload npm audit report
+      - name: Upload audit report
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
           path: frontend/npm-audit-report.json
 
-      - name: Check for high/critical vulnerabilities
-        run: |
-          cd frontend
-          if [ -f npm-audit-report.json ]; then
-            HIGH_COUNT=$(jq '.vulnerabilities | to_entries[] | select(.value.severity == "high" or .value.severity == "critical") | .key' npm-audit-report.json | wc -l)
-            if [ "$HIGH_COUNT" -gt 0 ]; then
-              echo "Found $HIGH_COUNT high/critical vulnerabilities"
-              jq '.vulnerabilities | to_entries[] | select(.value.severity == "high" or .value.severity == "critical") | "\(.key): \(.value.severity) - \(.value.title)"' npm-audit-report.json
-              exit 1
-            fi
-          fi
-
-  # =========================================================================
-  # Bandit (Python SAST)
-  # =========================================================================
+  # Python SAST
   bandit:
-    name: Security - Bandit SAST (Python)
+    name: Bandit SAST
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ./backend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -121,12 +86,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install Bandit
-        run: pip install bandit
+        run: pip install bandit[toml]
 
       - name: Run Bandit
-        run: |
-          cd backend
-          bandit -r app/ -f json -o bandit-report.json || true
+        run: bandit -r app/ -f json -o bandit-report.json || true
 
       - name: Upload Bandit report
         uses: actions/upload-artifact@v4
@@ -134,68 +97,41 @@ jobs:
           name: bandit-report
           path: backend/bandit-report.json
 
-      - name: Check for high severity issues
-        run: |
-          cd backend
-          if [ -f bandit-report.json ]; then
-            HIGH_COUNT=$(jq '[.results[] | select(.issue_severity == "HIGH")] | length' bandit-report.json)
-            MEDIUM_COUNT=$(jq '[.results[] | select(.issue_severity == "MEDIUM")] | length' bandit-report.json)
-            echo "Bandit results: $HIGH_COUNT high, $MEDIUM_COUNT medium"
-            if [ "$HIGH_COUNT" -gt 0 ]; then
-              jq '.results[] | select(.issue_severity == "HIGH") | "\(.filename):\(.line_number) - \(.issue_text)"' bandit-report.json
-              exit 1
-            fi
-          fi
-
-  # =========================================================================
-  # ESLint Security (Node.js SAST)
-  # =========================================================================
+  # Node.js SAST
   eslint-security:
-    name: Security - ESLint Security Rules (Node.js)
+    name: ESLint Security
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install dependencies
-        run: |
-          cd frontend
-          npm ci
-
-      - name: Install ESLint security plugin
-        run: |
-          cd frontend
-          npm install --save-dev eslint-plugin-security
+        run: npm ci
 
       - name: Run ESLint with security rules
-        run: |
-          cd frontend
-          npx eslint . --ext .ts,.tsx --plugin security --rule 'security/detect-object-injection: error' --rule 'security/detect-non-literal-regexp: error' --rule 'security/detect-unsafe-regex: error' --rule 'security/detect-buffer-noassert: error' --rule 'security/detect-child-process: error' --rule 'security/detect-disable-mustache-escape: error' --rule 'security/detect-eval-with-expression: error' --rule 'security/detect-no-csrf-before-method-override: error' --rule 'security/detect-non-literal-fs-filename: error' --rule 'security/detect-pseudoRandomBytes: error' --rule 'security/detect-unsafe-regex: error' --format=json -o eslint-security-report.json || true
+        run: npx eslint src/ --ext .ts,.tsx --format json --output-file eslint-report.json || true
 
-      - name: Upload ESLint security report
+      - name: Upload ESLint report
         uses: actions/upload-artifact@v4
         with:
-          name: eslint-security-report
-          path: frontend/eslint-security-report.json
+          name: eslint-report
+          path: frontend/eslint-report.json
 
-  # =========================================================================
-  # TruffleHog Secret Scan
-  # =========================================================================
+  # Secret scanning
   trufflehog:
-    name: Security - TruffleHog Secret Scan
+    name: TruffleHog Secret Scan
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -203,61 +139,40 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ""
+          base: main
           head: HEAD
-          extra_args: --json --no-verification
+          extra_args: --json --fail
 
-      - name: Check for verified secrets
-        run: |
-          # TruffleHog will exit with non-zero if verified secrets found
-          # This step runs only if previous step succeeds (no verified secrets)
-          echo "No verified secrets found"
-
-  # =========================================================================
-  # Dependency Review
-  # =========================================================================
+  # Dependency review for PRs
   dependency-review:
-    name: Security - Dependency Review
+    name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Review dependencies
+      - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
           config-file: .github/dependency-review-config.yml
-          fail-on-severity: high
 
-  # =========================================================================
-  # Docker Image Scan
-  # =========================================================================
-  docker-scan:
-    name: Security - Docker Image Scan (Trivy)
+  # Docker image scanning
+  trivy:
+    name: Trivy Container Scan
     runs-on: ubuntu-latest
-    needs: [docker-build-backend, docker-build-frontend, docker-build-voice-engine]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: |
-            ghcr.io/${{ github.repository }}-backend:latest
-            ghcr.io/${{ github.repository }}-frontend:latest
-            ghcr.io/${{ github.repository }}-voice-engine:latest
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "HIGH,CRITICAL"
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"

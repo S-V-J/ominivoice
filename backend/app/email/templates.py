@@ -1,158 +1,169 @@
 """
 Email templates using Jinja2.
 """
-from pathlib import Path
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, BaseLoader, select_autoescape
 
-# Template directory
-TEMPLATE_DIR = Path(__file__).parent / "templates"
-TEMPLATE_DIR.mkdir(exist_ok=True)
-
-# Jinja2 environment
 env = Environment(
-    loader=FileSystemLoader(TEMPLATE_DIR),
-    autoescape=select_autoescape(["html", "xml"]),
+    loader=BaseLoader(),
+    autoescape=select_autoescape(['html', 'xml']),
 )
 
-# Base template
-BASE_TEMPLATE = """<!DOCTYPE html>
+VERIFICATION_TEMPLATE = env.from_string("""
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ subject }}</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .container { background: #ffffff; border-radius: 8px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { text-align: center; margin-bottom: 24px; }
-        .logo { width: 48px; height: 48px; background: #2563eb; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; }
-        .button { display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-        .footer { margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center; }
-        .code { background: #f3f4f6; padding: 12px; border-radius: 6px; font-family: monospace; word-break: break-all; }
-    </style>
+    <title>Verify your email</title>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="logo"><svg width="24" height="24" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg></div>
-            <h1 style="margin: 0; color: #111827;">{{ subject }}</h1>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #f8fafc; border-radius: 12px; padding: 32px;">
+        <h1 style="color: #1e293b; margin-bottom: 16px;">Welcome to OminiVoice!</h1>
+        <p style="color: #475569; margin-bottom: 24px;">
+            Please verify your email address to activate your account.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{{ verification_url }}" style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+                Verify Email Address
+            </a>
         </div>
-        {{ content }}
-        <div class="footer">
-            <p>This email was sent from OminiVoice. If you didn't request this, please ignore.</p>
-            <p>&copy; {{ year }} OminiVoice. All rights reserved.</p>
-        </div>
+        <p style="color: #64748b; font-size: 14px; margin-top: 24px;">
+            Or copy this link: <br>
+            <span style="word-break: break-all;">{{ verification_url }}</span>
+        </p>
+        <p style="color: #64748b; font-size: 14px;">
+            This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
+        </p>
     </div>
 </body>
-</html>"""
+</html>
+""")
 
-# Create template files
-def init_templates():
-    """Initialize template files if they don't exist."""
-    templates = {
-        "base.html": BASE_TEMPLATE,
-        "verification.html": """{% extends "base.html" %}
-{% block content %}
-<p>Welcome to OminiVoice! Please verify your email address to activate your account.</p>
-<p style="text-align: center;">
-    <a href="{{ verification_url }}" class="button">Verify Email Address</a>
-</p>
-<p>Or copy this link: <div class="code">{{ verification_url }}</div></p>
-<p>This link expires in 24 hours.</p>
-{% endblock %}""",
-        "password_reset.html": """{% extends "base.html" %}
-{% block content %}
-<p>You requested a password reset for your OminiVoice account.</p>
-<p style="text-align: center;">
-    <a href="{{ reset_url }}" class="button">Reset Password</a>
-</p>
-<p>Or copy this link: <div class="code">{{ reset_url }}</div></p>
-<p>This link expires in 1 hour. If you didn't request this, please ignore this email.</p>
-{% endblock %}""",
-        "queue_failure.html": """{% extends "base.html" %}
-{% block content %}
-<p>Hello,</p>
-<p>The cold call queue for agent <strong>{{ agent_name }}</strong> encountered failures:</p>
-<ul>
-    {% for failure in failures %}
-    <li>{{ failure.contact_name }} ({{ failure.phone_number }}): {{ failure.error }}</li>
-    {% endfor %}
-</ul>
-<p>Please review and retry failed entries from the agent dashboard.</p>
-<p style="text-align: center;">
-    <a href="{{ dashboard_url }}" class="button">View Queue</a>
-</p>
-{% endblock %}""",
-        "invoice.html": """{% extends "base.html" %}
-{% block content %}
-<p>Thank you for your payment!</p>
-<p>Invoice <strong>{{ invoice_number }}</strong> for <strong>{{ amount }}</strong> has been processed.</p>
-<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-    <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">Plan</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">{{ plan }}</td></tr>
-    <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">Period</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">{{ period }}</td></tr>
-    <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;"><strong>Total</strong></td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right;"><strong>{{ amount }}</strong></td></tr>
-</table>
-<p style="text-align: center;">
-    <a href="{{ invoice_url }}" class="button">View Invoice</a>
-</p>
-{% endblock %}""",
-    }
+PASSWORD_RESET_TEMPLATE = env.from_string("""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Reset your password</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #f8fafc; border-radius: 12px; padding: 32px;">
+        <h1 style="color: #1e293b; margin-bottom: 16px;">Reset Your Password</h1>
+        <p style="color: #475569; margin-bottom: 24px;">
+            You requested a password reset for your OminiVoice account. Click the button below to set a new password.
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{{ reset_url }}" style="background: #dc2626; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+                Reset Password
+            </a>
+        </div>
+        <p style="color: #64748b; font-size: 14px; margin-top: 24px;">
+            Or copy this link: <br>
+            <span style="word-break: break-all;">{{ reset_url }}</span>
+        </p>
+        <p style="color: #64748b; font-size: 14px;">
+            This link expires in 24 hours. If you didn't request a password reset, you can safely ignore this email.
+        </p>
+    </div>
+</body>
+</html>
+""")
 
-    for name, content in templates.items():
-        path = TEMPLATE_DIR / name
-        if not path.exists():
-            path.write_text(content)
+QUEUE_FAILURE_TEMPLATE = env.from_string("""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Queue Processing Failed</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #fef2f2; border-radius: 12px; padding: 32px; border: 1px solid #fecaca;">
+        <h1 style="color: #991b1b; margin-bottom: 16px;">⚠️ Cold Call Queue Processing Failed</h1>
+        <p style="color: #7f1d1d; margin-bottom: 16px;">
+            The automated processing of your cold call queue encountered an error.
+        </p>
+        <div style="background: white; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 4px 0;"><strong>Agent:</strong> {{ agent_name }}</p>
+            <p style="margin: 4px 0;"><strong>Queue Entry:</strong> {{ contact_name }} ({{ phone_number }})</p>
+            <p style="margin: 4px 0;"><strong>Error:</strong> {{ error_message }}</p>
+            <p style="margin: 4px 0;"><strong>Time:</strong> {{ timestamp }}</p>
+        </div>
+        <p style="color: #7f1d1d;">
+            Please check the queue in your dashboard and retry the failed entries.
+        </p>
+    </div>
+</body>
+</html>
+""")
+
+INVOICE_RECEIPT_TEMPLATE = env.from_string("""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Invoice Receipt</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #f8fafc; border-radius: 12px; padding: 32px;">
+        <h1 style="color: #1e293b; margin-bottom: 16px;">Invoice Receipt</h1>
+        <p style="color: #475569; margin-bottom: 24px;">
+            Thank you for your payment! Your subscription has been updated.
+        </p>
+        <div style="background: white; border-radius: 8px; padding: 24px; margin: 16px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b;">Invoice Number</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{{ invoice_number }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b;">Plan</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{{ plan_name }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b;">Amount</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #059669;">{{ amount }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748b;">Date</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">{{ date }}</td>
+                </tr>
+            </table>
+        </div>
+        <p style="color: #64748b; font-size: 14px;">
+            You can view all your invoices in the <a href="{{ dashboard_url }}" style="color: #2563eb;">Account</a> section of your dashboard.
+        </p>
+    </div>
+</body>
+</html>
+""")
 
 
-def render_verification_email(verification_url: str, year: int = None) -> str:
-    """Render email verification template."""
-    from datetime import datetime
-    init_templates()
-    template = env.get_template("verification.html")
-    return template.render(
-        subject="Verify Your Email Address",
-        verification_url=verification_url,
-        year=year or datetime.now().year,
-    )
+def render_verification_email(verification_url: str) -> str:
+    """Render verification email HTML."""
+    return VERIFICATION_TEMPLATE.render(verification_url=verification_url)
 
 
-def render_password_reset_email(reset_url: str, year: int = None) -> str:
-    """Render password reset template."""
-    from datetime import datetime
-    init_templates()
-    template = env.get_template("password_reset.html")
-    return template.render(
-        subject="Reset Your Password",
-        reset_url=reset_url,
-        year=year or datetime.now().year,
-    )
+def render_password_reset_email(reset_url: str) -> str:
+    """Render password reset email HTML."""
+    return PASSWORD_RESET_TEMPLATE.render(reset_url=reset_url)
 
 
-def render_queue_failure_email(agent_name: str, failures: list, dashboard_url: str, year: int = None) -> str:
-    """Render queue failure notification template."""
-    from datetime import datetime
-    init_templates()
-    template = env.get_template("queue_failure.html")
-    return template.render(
-        subject=f"Queue Failures for {agent_name}",
+def render_queue_failure_email(agent_name: str, contact_name: str, phone_number: str, error_message: str, timestamp: str) -> str:
+    """Render queue failure notification email."""
+    return QUEUE_FAILURE_TEMPLATE.render(
         agent_name=agent_name,
-        failures=failures,
-        dashboard_url=dashboard_url,
-        year=year or datetime.now().year,
+        contact_name=contact_name,
+        phone_number=phone_number,
+        error_message=error_message,
+        timestamp=timestamp,
     )
 
 
-def render_invoice_email(invoice_number: str, amount: str, plan: str, period: str, invoice_url: str, year: int = None) -> str:
-    """Render invoice receipt template."""
-    from datetime import datetime
-    init_templates()
-    template = env.get_template("invoice.html")
-    return template.render(
-        subject=f"Invoice {invoice_number} - {amount}",
+def render_invoice_receipt_email(invoice_number: str, plan_name: str, amount: str, date: str, dashboard_url: str) -> str:
+    """Render invoice receipt email."""
+    return INVOICE_RECEIPT_TEMPLATE.render(
         invoice_number=invoice_number,
+        plan_name=plan_name,
         amount=amount,
-        plan=plan,
-        period=period,
-        invoice_url=invoice_url,
-        year=year or datetime.now().year,
+        date=date,
+        dashboard_url=dashboard_url,
     )

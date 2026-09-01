@@ -13,11 +13,16 @@ from app.core.config import settings
 
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use bcrypt with SHA-256 pre-hashing to avoid 72-byte limit
+pwd_context = CryptContext(
+    schemes=["bcrypt_sha256"],
+    deprecated="auto",
+    bcrypt__rounds=12,
+)
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt."""
+    """Hash a password using bcrypt with SHA-256 pre-hashing."""
     return pwd_context.hash(password)
 
 

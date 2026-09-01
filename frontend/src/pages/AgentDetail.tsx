@@ -363,15 +363,23 @@ function PromptEditor({
   const [rewrittenText, setRewrittenText] = useState('');
   const [isRewriting, setIsRewriting] = useState(false);
 
+  // We need to get the agent ID from context - use the current agent in the store
+  // Since we're in AgentDetail, we can access it via the store
+  const { currentAgent } = useAgentStore();
+
   const handleRewrite = async () => {
-    // This would call the rewrite API - for now just placeholder
+    if (!currentAgent) return;
+
     setIsRewriting(true);
-    // TODO: Implement actual rewrite call
-    setTimeout(() => {
-      setRewrittenText(value + ' [AI rewritten version would appear here]');
+    try {
+      const response = await api.rewritePrompt(currentAgent.id, label, value);
+      setRewrittenText(response.rewritten);
       setShowRewrite(true);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to rewrite prompt');
+    } finally {
       setIsRewriting(false);
-    }, 1000);
+    }
   };
 
   const applyRewrite = () => {

@@ -43,6 +43,16 @@ class VoiceStack(str, enum.Enum):
     STACK_A = "stack_a"  # Local: faster-whisper + Silero + Kokoro/Piper
     STACK_B = "stack_b"  # NVIDIA NIM: Riva ASR + Riva VAD + Chatterbox TTS
 
+    @classmethod
+    def from_string(cls, value: str) -> "VoiceStack":
+        """Create VoiceStack from string (case-insensitive)."""
+        value_lower = value.lower()
+        if value_lower in ("stack_a", "a"):
+            return cls.STACK_A
+        elif value_lower in ("stack_b", "b"):
+            return cls.STACK_B
+        raise ValueError(f"Invalid voice stack: {value}")
+
 
 class CallDirection(str, enum.Enum):
     """Call direction for logs."""
@@ -85,6 +95,85 @@ class SubscriptionStatus(str, enum.Enum):
     PAUSED = "paused"
 
 
+class UserRole(str, enum.Enum):
+    """User role within an account."""
+    OWNER = "owner"
+    ADMIN = "admin"
+    MEMBER = "member"
+    VIEWER = "viewer"
+
+
+class Account(Base):
+    """Account/Organization model for team collaboration."""
+    __tablename__ = "accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(255), nullable=False)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    stripe_customer_id = Column(String(255), nullable=True, index=True)
+    settings = Column(JSONB, nullable=True)  # Account-level settings
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_accounts")
+    members = relationship("AccountMember", back_populates="account", cascade="all, delete-orphan", lazy="dynamic")
+    agents = relationship("Agent", back_populates="account", lazy="dynamic")
+    api_keys = relationship("ApiKey", back_populates="account", lazy="dynamic")
+
+    def __repr__(self):
+        return f"<Account(id={self.id}, name={self.name}, owner_id={self.owner_id})>"
+
+
+class AccountMember(Base):
+    """Account membership with role."""
+    __tablename__ = "account_members"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    invited_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    account = relationship("Account", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id], back_populates="account_memberships")
+    inviter = relationship("User", foreign_keys=[invited_by])
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "user_id", name="uq_account_user"),
+        Index("ix_account_members_account_role", "account_id", "role"),
+    )
+
+    def __repr__(self):
+        return f"<AccountMember(account_id={self.account_id}, user_id={self.user_id}, role={self.role})>"
+
+
+class AccountInvitation(Base):
+    """Pending account invitation."""
+    __tablename__ = "account_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(Enum(UserRole), default=UserRole.MEMBER, nullable=False)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    token = Column(String(255), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_invitations_account_email", "account_id", "email"),
+    )
+
+    def __repr__(self):
+        return f"<AccountInvitation(account_id={self.account_id}, email={self.email}, role={self.role})>"
+
+
 class User(Base):
     """User model - multi-tenant owner."""
     __tablename__ = "users"
@@ -100,6 +189,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
+    owned_accounts = relationship("Account", foreign_keys="Account.owner_id", back_populates="owner", cascade="all, delete-orphan", lazy="dynamic")
+    account_memberships = relationship("AccountMember", foreign_keys="AccountMember.user_id", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     agents = relationship("Agent", back_populates="owner", cascade="all, delete-orphan", lazy="dynamic")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
@@ -114,6 +205,7 @@ class Agent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     direction = Column(Enum(AgentDirection), nullable=False)
     status = Column(Enum(AgentStatus), default=AgentStatus.DRAFT, nullable=False)
@@ -156,7 +248,7 @@ class Agent(Base):
     # Behavior configuration
     interruption_sensitivity = Column(String(20), default="medium", nullable=False)  # low, medium, high
     max_call_duration_s = Column(Integer, default=300, nullable=False)  # 5 minutes default
-    silence_timeout_s = Column(Integer, default=10, nullable=False)
+    silence_timeout_s = Column(Integer, default=30, nullable=False)
 
     # Limits
     daily_call_cap = Column(Integer, default=100, nullable=False)
@@ -167,6 +259,7 @@ class Agent(Base):
 
     # Relationships
     owner = relationship("User", back_populates="agents")
+    account = relationship("Account", back_populates="agents")
     api_keys = relationship("ApiKey", back_populates="agent", cascade="all, delete-orphan", lazy="dynamic")
     call_logs = relationship("CallLog", back_populates="agent", lazy="dynamic")
     queue_entries = relationship("ColdCallQueueEntry", back_populates="agent", lazy="dynamic")
@@ -175,6 +268,7 @@ class Agent(Base):
     __table_args__ = (
         Index("ix_agents_owner_status", "owner_id", "status"),
         Index("ix_agents_owner_direction", "owner_id", "direction"),
+        Index("ix_agents_account_status", "account_id", "status"),
     )
 
     def __repr__(self):
@@ -205,6 +299,7 @@ class ApiKey(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True, index=True)
     key_hash = Column(String(64), nullable=False, unique=True, index=True)  # SHA-256 hex
     key_prefix = Column(String(20), nullable=False)  # e.g., "ov_live_abc123"
     webhook_url = Column(String(500), nullable=False)
@@ -215,6 +310,7 @@ class ApiKey(Base):
     # Relationships
     agent = relationship("Agent", back_populates="api_keys")
     user = relationship("User", back_populates="api_keys")
+    account = relationship("Account", back_populates="api_keys")
 
     def __repr__(self):
         return f"<ApiKey(id={self.id}, prefix={self.key_prefix}, active={self.is_active})>"
@@ -235,6 +331,7 @@ class CallLog(Base):
     ended_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(Text, nullable=True)
     call_metadata = Column("metadata", JSONB, nullable=True)  # Additional metadata (interruption count, etc.)
+    audio_url = Column(String(500), nullable=True)  # S3/MinIO URL for recorded audio
 
     agent = relationship("Agent", back_populates="call_logs")
 
@@ -323,3 +420,29 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(user_id={self.user_id}, expires={self.expires_at})>"
+
+
+class AuditLog(Base):
+    """Audit log for admin actions and security events."""
+    __tablename__ = "audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String(100), nullable=False)  # e.g., "user.create", "agent.update", "subscription.cancel"
+    resource_type = Column(String(50), nullable=True)  # e.g., "user", "agent", "subscription"
+    resource_id = Column(String(100), nullable=True)
+    old_values = Column(JSONB, nullable=True)
+    new_values = Column(JSONB, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_audit_logs_user_created", "user_id", "created_at"),
+        Index("ix_audit_logs_account_created", "account_id", "created_at"),
+        Index("ix_audit_logs_action_created", "action", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<AuditLog(action={self.action}, user_id={self.user_id}, resource={self.resource_type}:{self.resource_id})>"

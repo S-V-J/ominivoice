@@ -21,12 +21,47 @@ from app.core.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.logging import setup_logging
 from app.core.metrics import metrics_endpoint, MetricsMiddleware
-from app.api.routers import auth, agents, api_keys, billing, queue, call_logs
+from app.api.routers import auth, agents, api_keys, billing, queue, call_logs, admin
 from app.core.celery_app import celery_app
 from app.services.llm_service import close_all_providers, get_llm_provider
 
 # Setup logging
 logger = setup_logging()
+
+# Initialize Sentry if DSN is configured
+if settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+
+        sentry_logging = LoggingIntegration(
+            level=logging.INFO,
+            event_level=logging.ERROR
+        )
+
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                StarletteIntegration(transaction_style="endpoint"),
+                SqlalchemyIntegration(),
+                RedisIntegration(),
+                CeleryIntegration(),
+                sentry_logging,
+            ],
+            traces_sample_rate=0.1,
+            profiles_sample_rate=0.1,
+            environment=settings.ENVIRONMENT,
+            release=os.getenv("VERSION", "dev"),
+        )
+        logger.info("Sentry initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Sentry: {e}")
 
 
 def create_llm_provider_factory():
@@ -129,7 +164,36 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Health check endpoint
+# Health check endpoints
+@app.get("/health/live", tags=["Health"])
+async def liveness_check():
+    """Liveness check - indicates if the process is running."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready", tags=["Health"])
+async def readiness_check():
+    """Readiness check - indicates if the service can handle requests."""
+    db_healthy = await check_db_connection()
+
+    # Check Redis
+    redis_healthy = False
+    try:
+        from app.core.celery_app import celery_app
+        await celery_app.connection().ensure_connection(max_retries=1)
+        redis_healthy = True
+    except Exception:
+        redis_healthy = False
+
+    return {
+        "status": "ready" if db_healthy and redis_healthy else "not_ready",
+        "services": {
+            "database": "healthy" if db_healthy else "unhealthy",
+            "redis": "healthy" if redis_healthy else "unhealthy",
+        },
+    }
+
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint for load balancers and monitoring."""
@@ -150,6 +214,7 @@ app.include_router(api_keys.router, prefix="/api", tags=["API Keys"])
 app.include_router(billing.router, tags=["Billing"])
 app.include_router(queue.router, tags=["Cold Call Queue"])
 app.include_router(call_logs.router, tags=["Call Logs"])
+app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 
 # Mount Voice Engine Demo Server as sub-application
 try:

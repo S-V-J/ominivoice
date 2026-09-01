@@ -554,3 +554,43 @@ class ErrorResponse(BaseSchema):
 class ValidationErrorResponse(BaseSchema):
     """Validation error response."""
     detail: List[Dict[str, Any]]
+
+
+# =============================================================================
+# Admin schemas
+# =============================================================================
+
+class AdminStatsResponse(BaseSchema):
+    """Schema for platform-wide statistics."""
+    total_users: int
+    active_users: int
+    total_agents: int
+    total_calls_30d: int
+    calls_per_minute: float
+    queue_depth: int
+    monthly_revenue: float
+
+
+class AdminUserResponse(BaseSchema):
+    """Schema for admin user view."""
+    id: str
+    email: str
+    plan: PlanTier
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    agent_count: int
+    subscription_status: Optional[str] = None
+    subscription_plan: Optional[PlanTier] = None
+
+
+class AdminAgentResponse(BaseSchema):
+    """Schema for admin agent view."""
+    id: str
+    name: str
+    direction: AgentDirection
+    status: AgentStatus
+    owner_email: str
+    owner_id: str
+    created_at: datetime
+    updated_at: datetime

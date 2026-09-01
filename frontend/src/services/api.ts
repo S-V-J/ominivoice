@@ -210,6 +210,42 @@ class ApiService {
     return response.data;
   }
 
+  // Admin endpoints
+  async getAdminStats() {
+    const response = await this.client.get('/admin/stats');
+    return response.data;
+  }
+
+  async getAdminUsers(params?: { search?: string; page?: number; page_size?: number }) {
+    const response = await this.client.get('/admin/users', { params });
+    return response.data;
+  }
+
+  async getAdminUser(userId: string) {
+    const response = await this.client.get(`/admin/users/${userId}`);
+    return response.data;
+  }
+
+  async suspendUser(userId: string) {
+    const response = await this.client.post(`/admin/users/${userId}/suspend`);
+    return response.data;
+  }
+
+  async unsuspendUser(userId: string) {
+    const response = await this.client.post(`/admin/users/${userId}/unsuspend`);
+    return response.data;
+  }
+
+  async getAdminAgents(params?: { status_filter?: string; page?: number; page_size?: number }) {
+    const response = await this.client.get('/admin/agents', { params });
+    return response.data;
+  }
+
+  async getAdminAuditLogs(params?: { action?: string; user_id?: string; page?: number; page_size?: number }) {
+    const response = await this.client.get('/admin/audit-logs', { params });
+    return response.data;
+  }
+
   // Cold Call Queue endpoints
   async importQueue(agentId: string, file: File, source?: string) {
     const formData = new FormData();

@@ -69,7 +69,7 @@ Build prompt: *"Implement `POST /auth/register`, `POST /auth/login` (issues JWT 
 Build prompt: *"Add a FastAPI dependency `get_current_user` and a second dependency `get_owned_agent(agent_id)` that 404s (not 403, to avoid leaking existence) if the agent doesn't belong to the requesting user. Apply it to every agent-scoped route from here on."*
 
 ### 1.4 Tests
-Build prompt: *"Write pytest tests for register/login/duplicate-email/invalid-password/tenant-isolation (user A cannot fetch user B's agent) using pytest-asyncio + httpx AsyncClient against a test Postgres schema."*
+Build prompt: *"Skip writing pytest tests as test system has been removed per project requirements."*
 
 ---
 

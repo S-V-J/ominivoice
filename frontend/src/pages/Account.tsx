@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import QueueTab from '../components/QueueTab';
 import CallLogsTab from '../components/CallLogsTab';
 import PromptVersionsTab from '../components/PromptVersionsTab';
+import StripeCheckout from '../components/StripeCheckout';
 import {
   ArrowLeftIcon,
   TrashIcon,
@@ -212,10 +213,11 @@ function Account() {
     setShowCheckout(plan);
   };
 
-  const handleCheckoutSuccess = () => {
+  const handleCheckoutSuccess = async () => {
     setShowCheckout(null);
     toast.success('Subscription activated!');
-    loadUsage();
+    // Wait a bit for Stripe to process, then reload usage
+    setTimeout(() => loadUsage(), 2000);
   };
 
   const handleCheckoutCancel = () => {
@@ -442,77 +444,6 @@ function Account() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StripeCheckout({ plan, onSuccess, onCancel }: { plan: string; onSuccess: () => void; onCancel: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleCheckout = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.createCheckoutSession(plan);
-      if (response.url) {
-        window.location.href = response.url;
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create checkout session');
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-center text-gray-600">Redirecting to Stripe Checkout...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-md mx-auto">
-      <div className="card">
-        <div className="card-header">
-          <h2 className="text-lg font-semibold text-gray-900">Subscribe to {PLAN_DETAILS[plan].name}</h2>
-          <p className="text-sm text-gray-500 mt-1">{PLAN_DETAILS[plan].price}</p>
-        </div>
-        <div className="card-body">
-          <ul className="space-y-2 text-sm text-gray-600">
-            {PLAN_DETAILS[plan as keyof typeof PLAN_DETAILS].features.map((feature) => (
-              <li key={feature} className="flex items-center">
-                <svg className="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
-          {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-          <div className="mt-6 flex space-x-3">
-            <button
-              onClick={handleCheckout}
-              disabled={loading}
-              className="btn-primary flex-1"
-            >
-              {loading ? 'Processing...' : `Subscribe to ${PLAN_DETAILS[plan].name}`}
-            </button>
-            <button
-              onClick={onCancel}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-          </div>
         </div>
       </div>
     </div>

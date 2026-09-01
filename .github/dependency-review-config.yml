@@ -1,33 +1,49 @@
 # Dependency Review Configuration
-# https://github.com/actions/dependency-review-action
+# See https://github.com/actions/dependency-review-action#configuration-options
 
-# Fail on high severity vulnerabilities
+# Fail the build if vulnerabilities are found with these severities
 fail-on-severity: high
 
-# Allow specific licenses (MIT, Apache-2.0, BSD, etc.)
-allow-licenses:
-  - MIT
-  - Apache-2.0
-  - BSD-2-Clause
-  - BSD-3-Clause
-  - ISC
-  - Python-2.0
-  - MPL-2.0
-  - Unlicense
-  - CC0-1.0
+# Allow specific vulnerabilities by GHSA ID (use sparingly)
+allow-ghsas: []
 
-# Deny specific licenses
-deny-licenses:
-  - GPL-3.0
-  - AGPL-3.0
-  - SSPL-1.0
+# Package ecosystems to scan
+package-ecosystems:
+  - npm
+  - pip
 
-# Scope of dependencies to check
+# Scope of dependencies to review
 scope:
   - runtime
   - development
 
-# Config for each ecosystem
-ecosystems:
-  - pypi
-  - npm
+# License policies
+licenses:
+  # Allowed licenses (SPDX identifiers)
+  allow:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+    - Python-2.0
+    - Unicode-DFS-2016
+    - CC0-1.0
+    - CC-BY-4.0
+    - CC-BY-SA-4.0
+  # Denied licenses
+  deny:
+    - GPL-3.0-only
+    - AGPL-3.0-only
+    - SSPL-1.0
+    - Elastic-2.0
+
+# Specific package rules
+packages:
+  # Allow specific versions despite vulnerabilities (use sparingly)
+  allow:
+    # Example: { name: "lodash", version: "4.17.21", reason: "Fixed in downstream dependency" }
+
+  # Block specific packages
+  deny:
+    # Example: { name: "event-stream", version: "*", reason: "Malicious package" }

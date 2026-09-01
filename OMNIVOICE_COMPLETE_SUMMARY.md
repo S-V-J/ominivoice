@@ -118,12 +118,7 @@ backend/
 │   └── email/
 │       ├── templates.py      # Jinja2 email templates
 │       └── sender.py         # aiosmtplib email sending
-├── tests/                    # Integration tests
-│   ├── test_auth.py
-│   ├── test_agents.py
-│   ├── test_api_keys.py
-│   ├── test_queue.py
-│   └── conftest.py
+├── # (tests directory removed per project requirements)
 ├── requirements.txt
 └── Dockerfile                # Multi-stage (dev + prod)
 ```

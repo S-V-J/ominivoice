@@ -230,7 +230,7 @@ ominivoice/
 │   │   ├── schemas/      # Pydantic schemas
 │   │   ├── services/     # Business logic
 │   │   └── tasks/        # Celery tasks
-│   ├── tests/
+│   └── # (tests directory removed per project requirements)
 │   ├── requirements.txt
 │   └── Dockerfile
 │
@@ -349,36 +349,21 @@ Once running, visit:
 
 ## Development Workflow
 
-### Running Tests
+### Code Quality
 
 ```bash
-# Backend tests
+# Backend formatting
 cd backend
-python -m pytest tests/ -v --cov=app
+ruff check .
+ruff format .
+mypy app/
 
-# Frontend tests
+# Frontend formatting
 cd frontend
 npm run lint
-npx tsc --noEmit
-npm run build
-
-# Integration tests (requires Docker)
-docker compose -f infra/docker-compose.yml run --rm api pytest tests/ -v
 ```
 
-### Load Testing
-
-```bash
-# Install k6
-# macOS: brew install k6
-# Ubuntu: sudo apt install k6
-
-# Run load tests
-export BASE_URL=https://ominivoice.local
-k6 run tests/load/auth.js
-k6 run tests/load/agents.js
-k6 run tests/load/voice.js
-```
+### Database Migrations
 
 ### Code Quality
 

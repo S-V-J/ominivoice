@@ -8,7 +8,7 @@ from app.email.templates import (
     render_verification_email,
     render_password_reset_email,
     render_queue_failure_email,
-    render_invoice_email,
+    render_invoice_receipt_email,
 )
 from app.core.config import settings
 
@@ -81,7 +81,7 @@ def send_invoice_email(self, user_email: str, invoice_number: str, amount: str, 
     """Send invoice receipt email."""
     import asyncio
 
-    html_content = render_invoice_email(invoice_number, amount, plan, period, invoice_url)
+    html_content = render_invoice_receipt_email(invoice_number, plan, amount, period, invoice_url)
 
     result = asyncio.run(send_email_task(
         to=[user_email],
@@ -96,19 +96,6 @@ def send_invoice_email(self, user_email: str, invoice_number: str, amount: str, 
     return result
 
 
-@celery_app.task(name="app.tasks.email_tasks.send_test_email")
-def send_test_email(email: str):
-    """Send a test email."""
-    import asyncio
-    from app.email.templates import render_verification_email
-
-    html_content = render_verification_email(f"{settings.FRONTEND_URL}/test")
-
-    return asyncio.run(send_email_task(
-        to=[email],
-        subject="OminiVoice Test Email",
-        html_content=html_content,
-    ))
 
 
 @celery_app.task(name="app.tasks.email_tasks.send_daily_queue_failure_summary")
@@ -179,18 +166,3 @@ def send_daily_queue_failure_summary():
                 )
 
     asyncio.run(_send_summaries())
-
-
-@celery_app.task(name="app.tasks.email_tasks.send_test_email")
-def send_test_email(email: str):
-    """Send a test email."""
-    import asyncio
-    from app.email.templates import render_verification_email
-
-    html_content = render_verification_email(f"{settings.FRONTEND_URL}/test")
-
-    return asyncio.run(send_email_task(
-        to=[email],
-        subject="OminiVoice Test Email",
-        html_content=html_content,
-    ))
