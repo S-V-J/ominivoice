@@ -118,10 +118,3 @@ bower_components/
 web_components/
 .DS_Store
 Thumbs.db
-backend/.venv
-backend/*.egg-info
-frontend/node_modules
-frontend/dist
-frontend/.eslintcache
-*.log
-*.cache

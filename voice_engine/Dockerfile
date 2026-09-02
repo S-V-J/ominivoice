@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
-COPY requirements.txt ./requirements.txt
+COPY voice_engine/requirements.txt ./requirements.txt
 
 # Use pre-downloaded packages if available (from pip_cache/)
 # This avoids network downloads during build
@@ -50,6 +50,9 @@ RUN if [ -d ./pip_cache ]; then \
         pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
         pip install --no-cache-dir --default-timeout=7200 -r requirements.txt; \
     fi
+
+# Copy pip_cache if it exists (for local install)
+COPY pip_cache/ ./pip_cache/
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
@@ -83,8 +86,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./requirements.txt
-COPY requirements-gpu.txt ./requirements-gpu.txt
+COPY voice_engine/requirements.txt ./requirements.txt
+COPY voice_engine/requirements-gpu.txt ./requirements-gpu.txt
 
 # Install with CUDA support for faster-whisper, ONNX GPU, etc.
 # Note: ctranslate2>=4.6.1 must be used (4.4.0 doesn't exist on PyPI)
@@ -102,7 +105,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY . ./voice_engine/
+COPY voice_engine/ ./voice_engine/
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
