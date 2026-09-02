@@ -176,8 +176,8 @@ services:
   # Voice Engine
   voice-engine:
     build:
-      context: ../voice_engine
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: voice_engine/Dockerfile
       target: production
       args:
         BUILD_DATE: ${BUILD_DATE:-}

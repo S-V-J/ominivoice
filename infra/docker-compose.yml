@@ -198,7 +198,8 @@ services:
     restart: unless-stopped
   voice-engine:
     build:
-      context: ../voice_engine
+      context: ..
+      dockerfile: voice_engine/Dockerfile
       dockerfile: Dockerfile
       target: production
       args:

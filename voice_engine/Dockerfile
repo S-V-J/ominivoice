@@ -37,10 +37,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first for better layer caching
 COPY requirements.txt ./requirements.txt
 
-# Install Python dependencies from network (versions fixed)
-# torch/torchaudio from official PyTorch index, rest from PyPI
-RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
+# Use pre-downloaded packages if available (from pip_cache/)
+# This avoids network downloads during build
+RUN if [ -d ./pip_cache ]; then \
+        echo "Using local pip_cache for torch/torchaudio..."; \
+        pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torch-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
+        pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torchaudio-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
+        pip install --no-cache-dir --default-timeout=7200 ./pip_cache/ctranslate2*.whl && \
+        pip install --no-cache-dir --default-timeout=7200 --find-links ./pip_cache -r requirements.txt; \
+    else \
+        echo "No local pip_cache, using network..."; \
+        pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
+        pip install --no-cache-dir --default-timeout=7200 -r requirements.txt; \
+    fi
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)

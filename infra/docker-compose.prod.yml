@@ -193,7 +193,8 @@ services:
   # Voice Engine (Stack A - Local)
   voice-engine:
     build:
-      context: ../voice_engine
+      context: ..
+      dockerfile: voice_engine/Dockerfile
       dockerfile: Dockerfile
       target: production
       args:
