@@ -34,15 +34,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better layer caching
+# Copy requirements and local package cache
 COPY requirements.txt ./requirements.txt
+COPY pip_cache/ ./pip_cache/
 
-# Install Python dependencies - use official PyPI with extended timeout for slow networks
-# Install heavy ML packages first with extended timeout
-# torch/torchaudio must come from official PyTorch index (aliyun mirror lacks these versions)
-RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --default-timeout=7200 ctranslate2==4.4.0 && \
-    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
+# Install Python dependencies from local cache (no network needed)
+# torch and torchaudio are pre-downloaded to pip_cache/
+RUN pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torch-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
+    pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torchaudio-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
+    pip install --no-cache-dir --default-timeout=7200 ./pip_cache/ctranslate2*.whl && \
+    pip install --no-cache-dir --default-timeout=7200 --find-links ./pip_cache -r requirements.txt
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
@@ -80,8 +81,9 @@ COPY requirements.txt ./requirements.txt
 COPY requirements-gpu.txt ./requirements-gpu.txt
 
 # Install with CUDA support for faster-whisper, ONNX GPU, etc.
-RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install --no-cache-dir --default-timeout=7200 ctranslate2==4.4.0 && \
+# Note: ctranslate2>=4.6.1 must be used (4.4.0 doesn't exist on PyPI)
+RUN pip install --no-cache-dir --default-timeout=7200 --index-url https://download.pytorch.org/whl/cu121 torch==2.4.1 torchaudio==2.4.1 && \
+    pip install --no-cache-dir --default-timeout=7200 ctranslate2>=4.6.1 && \
     pip install --no-cache-dir --default-timeout=7200 -r requirements.txt -r requirements-gpu.txt
 
 ################################################################################
