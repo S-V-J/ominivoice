@@ -34,16 +34,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and local package cache
+# Copy requirements first for better layer caching
 COPY requirements.txt ./requirements.txt
-COPY pip_cache/ ./pip_cache/
 
-# Install Python dependencies from local cache (no network needed)
-# torch and torchaudio are pre-downloaded to pip_cache/
-RUN pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torch-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
-    pip install --no-cache-dir --default-timeout=7200 ./pip_cache/torchaudio-2.4.1+cpu-cp311-cp311-linux_x86_64.whl && \
-    pip install --no-cache-dir --default-timeout=7200 ./pip_cache/ctranslate2*.whl && \
-    pip install --no-cache-dir --default-timeout=7200 --find-links ./pip_cache -r requirements.txt
+# Install Python dependencies from network (versions fixed)
+# torch/torchaudio from official PyTorch index, rest from PyPI
+RUN pip install --no-cache-dir --default-timeout=7200 torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir --default-timeout=7200 -r requirements.txt
 
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
