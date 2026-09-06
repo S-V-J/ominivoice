@@ -593,9 +593,8 @@ export default function QueueTab({ agent }: { agent: Agent }) {
           </div>
         </div>
       )}
-
-      {/* Import Modal */}
-      {showImportModal && (
+    </div>
+  );
 }
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
