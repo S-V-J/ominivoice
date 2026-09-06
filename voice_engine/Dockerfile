@@ -51,9 +51,6 @@ RUN if [ -d ./pip_cache ]; then \
         pip install --no-cache-dir --default-timeout=7200 -r requirements.txt; \
     fi
 
-# Copy pip_cache if it exists (for local install)
-COPY pip_cache/ ./pip_cache/
-
 ################################################################################
 # GPU VARIANT - CUDA-enabled build (optional)
 ################################################################################
