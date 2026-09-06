@@ -61,7 +61,25 @@ def send_queue_failure_email(self, user_email: str, agent_name: str, failures: l
     import asyncio
 
     dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
-    html_content = render_queue_failure_email(agent_name, failures, dashboard_url)
+
+    # Build error message from failures
+    error_messages = []
+    for f in failures:
+        contact_name = getattr(f, 'contact_name', 'Unknown') if f else 'Unknown'
+        phone_number = getattr(f, 'phone_number', 'N/A') if f else 'N/A'
+        error_msg = getattr(f, 'error_message', 'Unknown error') if f else 'Unknown error'
+        error_messages.append(f"{contact_name} ({phone_number}): {error_msg}")
+
+    error_message = "; ".join(error_messages) if error_messages else "Unknown error"
+    timestamp = __import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+    html_content = render_queue_failure_email(
+        agent_name=agent_name,
+        contact_name="multiple",
+        phone_number="N/A",
+        error_message=error_message,
+        timestamp=timestamp,
+    )
 
     result = asyncio.run(send_email_task(
         to=[user_email],
@@ -98,10 +116,12 @@ def send_invoice_email(self, user_email: str, invoice_number: str, amount: str, 
 
 
 
+
 @celery_app.task(name="app.tasks.email_tasks.send_daily_queue_failure_summary")
 def send_daily_queue_failure_summary():
     """Send daily summary of queue failures to all users with failed entries."""
     import asyncio
+    import datetime
     from sqlalchemy import select, func
     from sqlalchemy.ext.asyncio import AsyncSession
     from app.core.database import async_session_maker
@@ -134,8 +154,8 @@ def send_daily_queue_failure_summary():
                 # Get detailed failures for this user/agent
                 detail_result = await session.execute(
                     select(ColdCallQueueEntry)
+                    .join(Agent, ColdCallQueueEntry.agent_id == Agent.id)
                     .where(
-                        ColdCallQueueEntry.agent_id == Agent.id,
                         Agent.owner_id == user_id,
                         ColdCallQueueEntry.status == QueueEntryStatus.FAILED,
                         ColdCallQueueEntry.last_attempt_at >= func.now() - func.interval('24 hours')
@@ -153,10 +173,20 @@ def send_daily_queue_failure_summary():
                     for f in failures
                 ]
 
+                # Build error message from failures for the template
+                error_messages = []
+                for f in failure_details:
+                    error_messages.append(f"{f['contact_name']} ({f['phone_number']}): {f['error']}")
+
+                error_message = "; ".join(error_messages) if error_messages else "Unknown error"
+                timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
                 html_content = render_queue_failure_email(
                     agent_name=agent_name,
-                    failures=failure_details,
-                    dashboard_url=f"{settings.FRONTEND_URL}/dashboard"
+                    contact_name="multiple",
+                    phone_number="N/A",
+                    error_message=error_message,
+                    timestamp=timestamp,
                 )
 
                 await send_email_task(

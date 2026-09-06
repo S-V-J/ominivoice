@@ -200,7 +200,6 @@ services:
     build:
       context: ..
       dockerfile: voice_engine/Dockerfile
-      dockerfile: Dockerfile
       target: production
       args:
         BUILD_DATE: ${BUILD_DATE:-}
@@ -215,7 +214,7 @@ services:
       - NGC_API_KEY=${NGC_API_KEY}
       - TTS_ENGINE=${TTS_ENGINE:-kokoro}
       - STT_ENGINE=${STT_ENGINE:-faster-whisper}
-      - KOKORO_MODEL_PATH=/models/kokoro-v0_19.onnx
+      - KOKORO_MODEL_PATH=/models/kokoro-v1.0.onnx
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
       - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8}
       - LOG_LEVEL=${LOG_LEVEL:-info}
