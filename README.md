@@ -198,26 +198,6 @@ docker compose -f docker-compose.local.yml up -d --build
 # Health: https://ominivoice.local/health
 ```
 
-### Manual Development (without Docker)
-
-```bash
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev
-
-# Voice Engine
-cd voice-engine
-pip install -r requirements.txt
-python server.py
-```
-
 ## Project Structure
 
 ```
@@ -348,22 +328,6 @@ Once running, visit:
 5. Submit a PR
 
 ## Development Workflow
-
-### Code Quality
-
-```bash
-# Backend formatting
-cd backend
-ruff check .
-ruff format .
-mypy app/
-
-# Frontend formatting
-cd frontend
-npm run lint
-```
-
-### Database Migrations
 
 ### Code Quality
 

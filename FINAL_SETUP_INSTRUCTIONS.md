@@ -72,9 +72,9 @@ Once running, you can:
 9. **Monitor system health** via logs and Prometheus metrics
 
 ## 🔑 Your .env Already Contains:
-- ✅ NVIDIA_API_KEY: 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
-- ✅ NGC_API_KEY: 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
-- ✅ JWT_SECRET: 358ad583cba6a6d701ea3198a992447d691941be251cccc27bdd6317df34ba6f
+- ✅ NVIDIA_API_KEY: [REDACTED - see your .env file]
+- ✅ NGC_API_KEY: [REDACTED - see your .env file]
+- ✅ JWT_SECRET: [REDACTED - see your .env file]
 - ✅ All other required variables (with placeholders for Stripe that you can use test keys for)
 
 ## 📝 Note on Stripe Keys

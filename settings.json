@@ -1,0 +1,285 @@
+{
+  "env": {
+    "CLAUDE_CODE_AUTO_COMPACT": "true",
+    "CLAUDE_CODE_MAX_THINKING_TOKENS": "32000",
+    "CLAUDE_CODE_ENABLE_THINKING": "true",
+    "CLAUDE_CODE_BYPASS_PERMISSIONS": "false"
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "bash": {
+      "allow": [
+        "git *",
+        "gh *",
+        "npm *",
+        "npx *",
+        "pip *",
+        "pip3 *",
+        "python *",
+        "python3 *",
+        "docker *",
+        "docker-compose *",
+        "kubectl *",
+        "helm *",
+        "terraform *",
+        "ansible *",
+        "make *",
+        "cmake *",
+        "cargo *",
+        "go *",
+        "mvn *",
+        "gradle *",
+        "systemctl *",
+        "service *",
+        "journalctl *",
+        "nginx *",
+        "ufw *",
+        "firewall-cmd *",
+        "iptables *",
+        "ss *",
+        "netstat *",
+        "lsof *",
+        "ps *",
+        "top *",
+        "htop *",
+        "free *",
+        "df *",
+        "du *",
+        "ls *",
+        "find *",
+        "grep *",
+        "rg *",
+        "awk *",
+        "sed *",
+        "cat *",
+        "head *",
+        "tail *",
+        "less *",
+        "more *",
+        "vim *",
+        "nano *",
+        "code *",
+        "chmod *",
+        "chown *",
+        "mkdir *",
+        "rm *",
+        "cp *",
+        "mv *",
+        "ln *",
+        "tar *",
+        "gzip *",
+        "gunzip *",
+        "unzip *",
+        "curl *",
+        "wget *",
+        "ssh *",
+        "scp *",
+        "rsync *",
+        "sudo *",
+        "apt *",
+        "apt-get *",
+        "dnf *",
+        "yum *",
+        "pacman *",
+        "zypper *",
+        "snap *",
+        "flatpak *",
+        "brew *",
+        "yarn *",
+        "pnpm *",
+        "bun *",
+        "deno *",
+        "nvm *",
+        "fnm *",
+        "pyenv *",
+        "rbenv *",
+        "rustup *",
+        "sdkman *",
+        "asdf *"
+      ],
+      "deny": []
+    }
+  },
+  "model": "opus[1m]",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[PRE] Running: $TOOL_INPUT'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[POST] Completed: $TOOL_INPUT'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Session ended at $(date)'"
+          }
+        ]
+      }
+    ]
+  },
+  "worktree": {
+    "baseRef": "head"
+  },
+  "effortLevel": "xhigh",
+  "askUserQuestionTimeout": "10m",
+  "dialogExpiry": "never",
+  "autoUpdatesChannel": "latest",
+  "tui": "default",
+  "skipWorkflowUsageWarning": true,
+  "theme": "auto",
+  "verbose": true,
+  "autoCompactEnabled": true,
+  "useAutoModeDuringPlan": true,
+  "autoCompact": true,
+  "autoScroll": true,
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/ML"
+      ]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-fetch"
+      ]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres"
+      ],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "${POSTGRES_URL}"
+      }
+    },
+    "sqlite": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/home/ML/data.db"
+      ]
+    },
+    "redis": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-redis"
+      ],
+      "env": {
+        "REDIS_URL": "${REDIS_URL}"
+      }
+    }
+  },
+  "maxTokens": 8192,
+  "temperature": 0.1,
+  "agentSettings": {
+    "defaultAgent": "general-purpose",
+    "availableAgents": [
+      "general-purpose",
+      "code-reviewer",
+      "security-auditor",
+      "performance-engineer",
+      "devops-engineer",
+      "database-engineer",
+      "frontend-engineer",
+      "backend-engineer",
+      "ml-engineer",
+      "api-designer",
+      "test-engineer",
+      "documentation-writer"
+    ]
+  },
+  "workspace": {
+    "root": "/home/ML",
+    "include": [
+      "**/*.py",
+      "**/*.js",
+      "**/*.ts",
+      "**/*.json",
+      "**/*.yaml",
+      "**/*.yml",
+      "**/*.md",
+      "**/*.sh",
+      "**/*.dockerfile",
+      "**/Dockerfile*",
+      "**/*.tf",
+      "**/*.go",
+      "**/*.rs",
+      "**/*.java",
+      "**/*.kt",
+      "**/*.cs",
+      "**/*.cpp",
+      "**/*.c",
+      "**/*.h",
+      "**/*.hpp"
+    ],
+    "exclude": [
+      "node_modules/**",
+      ".git/**",
+      "venv/**",
+      "__pycache__/**",
+      "*.log",
+      "*.tmp",
+      "dist/**",
+      "build/**",
+      ".next/**",
+      "target/**",
+      "*.min.js",
+      "*.min.css"
+    ]
+  },
+  "telemetry": {
+    "enabled": false
+  },
+  "notifications": {
+    "enabled": true,
+    "sound": false
+  }
+}
